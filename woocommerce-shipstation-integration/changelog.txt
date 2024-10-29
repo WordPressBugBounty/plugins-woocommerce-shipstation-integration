@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 4.4.5 - 2024-10-28 =
+* Tweak - WordPress 6.7 Compatibility.
+
 = 4.4.4 - 2024-07-02 =
 * Fix   - Security updates.
 * Tweak - WooCommerce 9.0 and WordPress 6.6 Compatibility.

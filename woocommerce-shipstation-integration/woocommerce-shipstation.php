@@ -2,16 +2,16 @@
 /**
  * Plugin Name: WooCommerce - ShipStation Integration
  * Plugin URI: https://woocommerce.com/products/shipstation-integration/
- * Version: 4.4.4
+ * Version: 4.4.5
  * Description: Adds ShipStation label printing support to WooCommerce. Requires server DomDocument support.
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
  * Text Domain: woocommerce-shipstation-integration
  * Domain Path: /languages
- * Requires at least: 6.4
- * Tested up to: 6.6
- * WC tested up to: 9.0
- * WC requires at least: 8.8
+ * Requires at least: 6.5
+ * Tested up to: 6.7
+ * WC tested up to: 9.3
+ * WC requires at least: 9.1
  * Requires Plugins: woocommerce
  *
  * @package WC_ShipStation
@@ -42,27 +42,40 @@ function woocommerce_shipstation_missing_wc_notice() {
  * @since 1.0.0
  */
 function woocommerce_shipstation_init() {
-	load_plugin_textdomain( 'woocommerce-shipstation-integration', false, basename( __DIR__ ) . '/languages' );
-
 	if ( ! class_exists( 'WooCommerce' ) ) {
 		add_action( 'admin_notices', 'woocommerce_shipstation_missing_wc_notice' );
 
 		return;
 	}
 
-	define( 'WC_SHIPSTATION_VERSION', '4.4.4' ); // WRCS: DEFINED_VERSION.
+	define( 'WC_SHIPSTATION_VERSION', '4.4.5' ); // WRCS: DEFINED_VERSION.
 
 	if ( ! defined( 'WC_SHIPSTATION_EXPORT_LIMIT' ) ) {
 		define( 'WC_SHIPSTATION_EXPORT_LIMIT', 100 );
 	}
 
+	add_action( 'before_woocommerce_init', 'woocommerce_shipstation_includes' );
+	add_action( 'after_setup_theme', 'woocommerce_shipstation_load_textdomain' );
+}
+
+add_action( 'plugins_loaded', 'woocommerce_shipstation_init' );
+
+/**
+ * Include needed files.
+ */
+function woocommerce_shipstation_includes() {
 	// Include order util trait class file.
 	require_once WC_SHIPSTATION_ABSPATH . 'includes/trait-woocommerce-order-util.php';
 	include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
 	include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-privacy.php';
 }
 
-add_action( 'plugins_loaded', 'woocommerce_shipstation_init' );
+/**
+ * Localisation.
+ */
+function woocommerce_shipstation_load_textdomain() {
+	load_plugin_textdomain( 'woocommerce-shipstation-integration', false, plugin_basename( WC_SHIPSTATION_ABSPATH ) . '/languages/' );
+}
 
 /**
  * Define integration.
