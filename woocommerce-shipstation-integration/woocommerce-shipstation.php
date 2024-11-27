@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WooCommerce - ShipStation Integration
  * Plugin URI: https://woocommerce.com/products/shipstation-integration/
- * Version: 4.4.5
+ * Version: 4.4.6
  * Description: Adds ShipStation label printing support to WooCommerce. Requires server DomDocument support.
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
@@ -48,20 +48,33 @@ function woocommerce_shipstation_init() {
 		return;
 	}
 
-	define( 'WC_SHIPSTATION_VERSION', '4.4.5' ); // WRCS: DEFINED_VERSION.
+	define( 'WC_SHIPSTATION_VERSION', '4.4.6' ); // WRCS: DEFINED_VERSION.
 
 	if ( ! defined( 'WC_SHIPSTATION_EXPORT_LIMIT' ) ) {
 		define( 'WC_SHIPSTATION_EXPORT_LIMIT', 100 );
 	}
 
-	add_action( 'before_woocommerce_init', 'woocommerce_shipstation_includes' );
+	woocommerce_shipstation_includes();
+
+	add_action( 'before_woocommerce_init', 'woocommerce_shipstation_before_woocommerce_init' );
 	add_action( 'after_setup_theme', 'woocommerce_shipstation_load_textdomain' );
 }
 
 add_action( 'plugins_loaded', 'woocommerce_shipstation_init' );
 
 /**
+ * Run instances on time.
+ *
+ * @since 4.4.6
+ */
+function woocommerce_shipstation_before_woocommerce_init() {
+	new WC_ShipStation_Privacy();
+}
+
+/**
  * Include needed files.
+ *
+ * @since 4.4.5
  */
 function woocommerce_shipstation_includes() {
 	// Include order util trait class file.
@@ -72,6 +85,8 @@ function woocommerce_shipstation_includes() {
 
 /**
  * Localisation.
+ *
+ * @since 4.4.5
  */
 function woocommerce_shipstation_load_textdomain() {
 	load_plugin_textdomain( 'woocommerce-shipstation-integration', false, plugin_basename( WC_SHIPSTATION_ABSPATH ) . '/languages/' );

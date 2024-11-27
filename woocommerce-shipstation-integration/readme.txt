@@ -7,7 +7,7 @@ WC tested up to: 9.3
 WC requires at least: 9.1
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.4.5
+Stable tag: 4.4.6
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -48,6 +48,9 @@ For help setting up and configuring, please refer to our [user guide](https://do
 If you get stuck, you can ask for help in the Plugin Forum.
 
 == Changelog ==
+
+= 4.4.6 - 2024-11-27 =
+* Tweak - Reimplemented compatibility with WordPress 6.7 while maintaining unchanged execution priorities.
 
 = 4.4.5 - 2024-10-28 =
 * Tweak - WordPress 6.7 Compatibility.

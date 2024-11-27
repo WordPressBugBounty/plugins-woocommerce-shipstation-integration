@@ -172,5 +172,3 @@ class WC_ShipStation_Privacy extends WC_Abstract_Privacy {
 		return array( true, false, array( __( 'ShipStation Order Data Erased.', 'woocommerce-shipstation-integration' ) ) );
 	}
 }
-
-new WC_ShipStation_Privacy();
