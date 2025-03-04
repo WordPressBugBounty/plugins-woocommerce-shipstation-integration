@@ -1,53 +1,76 @@
 === WooCommerce ShipStation Integration ===
-Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, dwainm, laurendavissmith001
+Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, dwainm, laurendavissmith001, Kloon
 Tags: shipping, woocommerce, automattic
-Requires at least: 6.5
+Requires at least: 6.6
 Tested up to: 6.7
-WC tested up to: 9.3
-WC requires at least: 9.1
+WC tested up to: 9.7
+WC requires at least: 9.5
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.4.6
+Stable tag: 4.4.7
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-The official WooCommerce ShipStation plugin helps store owners integrate WooCommerce with ShipStation and expedite the shipping process.
+Ship with confidence, save big on top carriers, and streamline the entire fulfillment process with the WooCommerce ShipStation Integration.
 
 == Description ==
 
-ShipStation’s sophisticated automation features help you shave many hours off your fulfillment process. Print wirelessly and share your printer with ease thanks to ShipStation Connect. Run your business on-the-go with ShipStation Mobile, the industry’s only mobile app (free for iOS and Android) and do everything from creating orders to printing labels and emailing return labels all from your phone or tablet.
+Ship with confidence, save big on top carriers, and streamline the entire fulfillment process with the WooCommerce ShipStation Integration.
 
-= Why choose ShipStation? =
+= Features =
+- __Save money;__ get up to 84% off with top carriers, including UPS, USPS, and DHL Express.
+- __Save time;__ sync orders from all your sales channels in one place, and use automation to speed up your processes.
+- __Delight customers;__ deliver an exceptional experience with tracking, custom emails and SMS, plus a branded returns portal.
+- __Expand across borders;__ automatically generate customs forms, verify addresses, and get low rates on international shipments.
 
-ShipStation is a web-based shipping solution that streamlines the order fulfillment process for online retailers, handling everything from order import and batch label creation to customer communication. Advanced customization features allow ShipStation to fit businesses with any number of users or locations.
+= Get started =
+This extension requires a ShipStation monthly plan — [sign up for a free 30-day trial](https://www.shipstation.com/partners/woocommerce/?ref=partner-woocommerce&utm_campaign=partner-referrals&utm_source=woocommerce&utm_medium=partner).
+
+= Save money =
+Save __up to 84%__ with UPS, USPS, and DHL Express. You'll also get seriously discounted rates from leading carriers in the US, Canada, UK, Australia, New Zealand, France, and Germany.
+
+= Save time =
+Connect your store in seconds, automate workflows, sync tracking info, and get products to your customers __fast__. Sync orders from all your sales channels (including Amazon, Walmart, eBay, and Etsy) in one place.
+
+Get back hours of your time by automating, tagging, splitting, and batching orders and labels. Score!
+
+= Delight your customers =
+Deliver an exceptional experience __every time__ with customizable emails, SMS, and branded tracking info to keep customers updated. Returns? No problem, thanks to your own branded returns portal — now that's seamless.
+
+= Expand your business across borders =
+Global fulfillment just became effortless. With ShipStation, you can automatically generate and send __customs declarations__ and __verify overseas addresses__ in no time. Shipping to Canada from the US? International parcels are fast and affordable, with low, flat rate Canada Delivered Duty Paid (DDP).
+
+= Why ShipStation? =
+ShipStation powers global shipping success for businesses of all sizes. It streamlines the online fulfillment process — from order import and batch label creation to customer communication — with advanced customization features.
 
 == Frequently Asked Questions ==
 
-= Does ShipStation provide real-time shipping quotes that can be used at checkout? =
+= Where can I find documentation and a setup guide? =
+You’ve come to the right place. [Our documentation](https://woocommerce.com/document/shipstation-for-woocommerce/) for WooCommerce ShipStation Integration includes detailed setup instructions, troubleshooting tips, and more.
 
-No. Store owners need a real-time shipping quote extension such as USPS, FedEx, UPS, etc. or have an alternate way to show shipping quotes (e.g., Flat rate charge).
+= Where can I get support? =
+To start, [review our troubleshooting tips](https://woocommerce.com/document/shipstation-for-woocommerce/#troubleshooting) for answers to common questions. Then, if you need further assistance, get in touch via the [official support forum](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
-= Does ShipStation send data when not being used (e.g., Free Shipping)? =
+= Do I need a ShipStation account? =
+Yes; [sign up for a free 30-day trial](https://www.shipstation.com/partners/woocommerce/?ref=partner-woocommerce&utm_campaign=partner-referrals&utm_source=woocommerce&utm_medium=partner).
 
-Yes, there isn’t conditional exporting. If the data is there, we export it!
+= Does this extension provide real-time shipping quotes at checkout? =
+No. Merchants will need a _real-time shipping quote extension_ (such as USPS, FedEx, UPS, etc.) or an alternate method (e.g. [flat rate charges](https://woocommerce.com/document/flat-rate-shipping/).
 
-= Why do multiple line items in an order on the WooCommerce side get combined when they reach ShipStation? =
+= Does ShipStation send data when not in use (e.g. for free shipping)? =
+Yes; conditional exporting is not currently available.
 
-This is most likely because unique Product SKUs have not been configured for each product and variation in the Store. To ensure that order line items show up correctly in ShipStation, we recommend assigning a unique SKU to each product as well as each variation within a product.
+= Why are multiple line items in a WooCommerce order combined when they reach ShipStation? =
+This commonly occurs when products and variations do not have a unique [stock-keeping unit (SKU)](https://woocommerce.com/document/managing-products/product-editor-settings/#what-is-sku) assigned to them. Allocate a unique SKU to each product — and each variation of that product — to ensure order line items show up correctly in ShipStation.
 
-= Why do multiple line items in an order on the WooCommerce side get combined when they reach ShipStation? =
-
-This is most likely because unique Product SKUs have not been configured for each product and variation in the Store. To ensure that order line items show up correctly in ShipStation, we recommend assigning a unique SKU to each product as well as each variation within a product.
-
-= Where can I find documentation? =
-
-For help setting up and configuring, please refer to our [user guide](https://docs.woocommerce.com/document/shipstation-for-woocommerce)
-
-= Where can I get support or talk to other users? =
-
-If you get stuck, you can ask for help in the Plugin Forum.
+= My question is not listed; where can I find more answers? =
+[Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.4.7 - 2025-03-04 =
+* Tweak - PHP 8.4 Compatibility.
+* Tweak - WooCommerce 9.7 Compatibility.
 
 = 4.4.6 - 2024-11-27 =
 * Tweak - Reimplemented compatibility with WordPress 6.7 while maintaining unchanged execution priorities.
