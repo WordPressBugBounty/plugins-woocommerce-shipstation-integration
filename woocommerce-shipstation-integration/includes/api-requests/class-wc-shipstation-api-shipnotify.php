@@ -120,7 +120,7 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		 *
 		 * @since 4.1.6
 		 */
-		return apply_filters( 'woocommerce_shipstation_get_order_id', absint( $order_id ) );
+		return absint( apply_filters( 'woocommerce_shipstation_get_order_id', $order_id ) );
 	}
 
 	/**
@@ -227,8 +227,8 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		$order           = wc_get_order( $order_id );
 
 		if ( false === $order || ! is_object( $order ) ) {
-			/* translators: 1: order id */
-			$this->log( sprintf( __( 'Order %s can not be found.', 'woocommerce-shipstation-integration' ), $order_id ) );
+			/* translators: %1$s is order number, %2$d is order id */
+			$this->log( sprintf( __( 'Order number: %1$s or Order ID: %2$d can not be found.', 'woocommerce-shipstation-integration' ), $order_number, $order_id ) );
 			exit;
 		}
 
