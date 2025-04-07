@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 4.4.9 - 2025-04-07 =
+* Tweak - WooCommerce 9.8 compatibility.
+
 = 4.4.8 - 2025-03-10 =
 * Fix   - Make the value of `woocommerce_shipstation_get_order_id` filter consistent by removing the conversion function.
 

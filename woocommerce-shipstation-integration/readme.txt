@@ -7,7 +7,7 @@ WC tested up to: 9.7
 WC requires at least: 9.5
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.4.8
+Stable tag: 4.4.9
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -67,6 +67,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.4.9 - 2025-04-07 =
+* Tweak - WooCommerce 9.8 compatibility.
 
 = 4.4.8 - 2025-03-10 =
 * Fix   - Make the value of `woocommerce_shipstation_get_order_id` filter consistent by removing the conversion function.
