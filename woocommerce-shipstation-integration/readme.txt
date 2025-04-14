@@ -7,7 +7,7 @@ WC tested up to: 9.7
 WC requires at least: 9.5
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.4.9
+Stable tag: 4.5.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -67,6 +67,12 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.5.0 - 2025-04-14 =
+* Add   - woocommerce_shipstation_shipnotify_order_shipped filter - Allow to override is order shipped.
+* Add   - woocommerce_shipstation_shipnotify_tracking_note filter - Allow to override tracking note.
+* Add   - woocommerce_shipstation_shipnotify_send_tracking_note filter - Allow to override should tracking note be sent to customer.
+* Tweak - Move woocommerce_shipstation_shipnotify action before order status is updated.
 
 = 4.4.9 - 2025-04-07 =
 * Tweak - WooCommerce 9.8 compatibility.

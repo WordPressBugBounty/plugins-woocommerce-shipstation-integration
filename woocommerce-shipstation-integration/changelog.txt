@@ -1,5 +1,11 @@
 *** ShipStation for WooCommerce ***
 
+= 4.5.0 - 2025-04-14 =
+* Add   - woocommerce_shipstation_shipnotify_order_shipped filter - Allow to override is order shipped.
+* Add   - woocommerce_shipstation_shipnotify_tracking_note filter - Allow to override tracking note.
+* Add   - woocommerce_shipstation_shipnotify_send_tracking_note filter - Allow to override should tracking note be sent to customer.
+* Tweak - Move woocommerce_shipstation_shipnotify action before order status is updated.
+
 = 4.4.9 - 2025-04-07 =
 * Tweak - WooCommerce 9.8 compatibility.
 

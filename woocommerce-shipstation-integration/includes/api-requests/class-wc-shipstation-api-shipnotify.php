@@ -337,15 +337,49 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 			$is_customer_note = ( WC_ShipStation_Integration::$shipped_status !== $current_status ) ? 1 : 0;
 		}
 
-		$order->add_order_note( $order_note, $is_customer_note );
+		$tracking_data = array(
+			'tracking_number' => $tracking_number,
+			'carrier'         => $carrier,
+			'ship_date'       => $timestamp,
+			'xml'             => $shipstation_xml,
+		);
 
-		// Update order status.
-		if ( $order_shipped && WC_ShipStation_Integration::$shipped_status !== $current_status ) {
-			$order->update_status( WC_ShipStation_Integration::$shipped_status );
+		/**
+		* Allow to override tracking note.
+		*
+		* @param string $order_note
+		* @param WC_Order $order
+		* @param array $tracking_data
+		*
+		* @since 4.5.0
+		*/
+		$order_note = apply_filters(
+			'woocommerce_shipstation_shipnotify_tracking_note',
+			$order_note,
+			$order,
+			$tracking_data
+		);
 
-			/* translators: 1) order ID 2) shipment status */
-			$this->log( sprintf( __( 'Updated order %1$s to status %2$s', 'woocommerce-shipstation-integration' ), $order_id, WC_ShipStation_Integration::$shipped_status ) );
-		}
+		$order->add_order_note(
+			$order_note,
+			/**
+			* Allow to override should tracking note be sent to customer.
+			*
+			* @param bool $order_shipped
+			* @param string $order_note
+			* @param WC_Order $order
+			* @param array $tracking_data
+			*
+			* @since 4.5.0
+			*/
+			apply_filters(
+				'woocommerce_shipstation_shipnotify_send_tracking_note',
+				$is_customer_note,
+				$order_note,
+				$order,
+				$tracking_data
+			)
+		);
 
 		/**
 		 * Trigger action for other integrations.
@@ -355,13 +389,33 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		do_action(
 			'woocommerce_shipstation_shipnotify',
 			$order,
-			array(
-				'tracking_number' => $tracking_number,
-				'carrier'         => $carrier,
-				'ship_date'       => $timestamp,
-				'xml'             => $shipstation_xml,
-			)
+			$tracking_data
 		);
+
+		// Update order status.
+		if (
+			/**
+			* Allow to override is order shipped flag.
+			*
+			* @param bool $order_shipped
+			* @param WC_Order $order
+			* @param array $tracking_data
+			*
+			* @since 4.5.0
+			*/
+			apply_filters(
+				'woocommerce_shipstation_shipnotify_order_shipped',
+				$order_shipped,
+				$order,
+				$tracking_data
+			)
+			&& WC_ShipStation_Integration::$shipped_status !== $current_status
+		) {
+			$order->update_status( WC_ShipStation_Integration::$shipped_status );
+
+			/* translators: 1) order ID 2) shipment status */
+			$this->log( sprintf( __( 'Updated order %1$s to status %2$s', 'woocommerce-shipstation-integration' ), $order_id, WC_ShipStation_Integration::$shipped_status ) );
+		}
 
 		status_header( 200 );
 		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
