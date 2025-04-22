@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, automattic
 Requires at least: 6.6
 Tested up to: 6.7
-WC tested up to: 9.7
-WC requires at least: 9.5
+WC tested up to: 9.8
+WC requires at least: 9.6
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.5.0
+Stable tag: 4.5.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -67,6 +67,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.5.1 - 2025-04-22 =
+* Add   - Include the product dimensions when exporting an order to ShipStation.
+* Tweak - Added a filter to allow the user to disable exporting order discounts as a separate line item to ShipStation.
 
 = 4.5.0 - 2025-04-14 =
 * Add   - woocommerce_shipstation_shipnotify_order_shipped filter - Allow to override is order shipped.

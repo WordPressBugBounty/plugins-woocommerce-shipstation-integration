@@ -1,5 +1,9 @@
 *** ShipStation for WooCommerce ***
 
+= 4.5.1 - 2025-04-22 =
+* Add   - Include the product dimensions when exporting an order to ShipStation.
+* Tweak - Added a filter to allow the user to disable exporting order discounts as a separate line item to ShipStation.
+
 = 4.5.0 - 2025-04-14 =
 * Add   - woocommerce_shipstation_shipnotify_order_shipped filter - Allow to override is order shipped.
 * Add   - woocommerce_shipstation_shipnotify_tracking_note filter - Allow to override tracking note.

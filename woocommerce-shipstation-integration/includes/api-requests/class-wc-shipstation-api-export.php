@@ -10,7 +10,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use WooCommerce\ShipStation\Order_Util;
-use Automattic\WooCommerce\Internal\DataStores\Orders\OrdersTableDataStore;
 
 /**
  * WC_Shipstation_API_Export Class
@@ -165,6 +164,32 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			 * @since 4.3.7
 			 */
 			$exchange_rate = apply_filters( 'woocommerce_shipstation_export_exchange_rate', 1.00, $order );
+			/**
+			 * Filter whether order discounts should be exported as a separate line item to ShipStation.
+			 *
+			 * By default (true), discounts are exported as a separate line item. This has been the
+			 * behavior since the beginning and is expected by all existing users and integrations.
+			 *
+			 * If set to false, the discount amount will instead be applied proportionally across the product line items,
+			 * and no separate "Discount" line will be included in the export.
+			 *
+			 * ⚠️ Changing this behavior may break compatibility with external systems or workflows
+			 * that rely on the presence of a separate discount line.
+			 *
+			 * This filter is provided to give developers flexibility in customizing how discounts
+			 * are represented in the ShipStation export.
+			 *
+			 * @see   https://linear.app/a8c/issue/WOOSHIP-748/discounts-are-added-in-separate-line-item-as-total-discount-instead-of
+			 * @see   https://github.com/woocommerce/woocommerce-shipstation/issues/85
+			 *
+			 * @param bool     $export_discounts_as_separate_item Whether to export discounts as a separate ShipStation line item. Default true.
+			 * @param WC_Order $order                             The WooCommerce order object.
+			 *
+			 * @return bool Modified flag to control export behavior for discounts.
+			 *
+			 * @since 4.5.1
+			 */
+			$export_discounts_as_separate_item = apply_filters( 'woocommerce_shipstation_export_discounts_as_separate_item', true, $order );
 
 			$order_xml              = $xml->createElement( 'Order' );
 			$formatted_order_number = ltrim( $order->get_order_number(), '#' );
@@ -285,8 +310,9 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$order_xml->appendChild( $customer_xml );
 
 			// Item data.
-			$found_item = false;
-			$items_xml  = $xml->createElement( 'Items' );
+			$found_item         = false;
+			$product_dimensions = array();
+			$items_xml          = $xml->createElement( 'Items' );
 			// Merge arrays without loosing indexes.
 			$order_items = $order->get_items() + $order->get_items( 'fee' );
 			foreach ( $order_items as $item_id => $item ) {
@@ -344,14 +370,21 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 					$item_qty = $item->get_quantity() - abs( $order->get_qty_refunded_for_item( $item_id ) );
 					$this->xml_append( $item_xml, 'Quantity', $item_qty, false );
 
-					$item_subtotal = $order->get_item_subtotal( $item, false, true );
+					$item_total = $export_discounts_as_separate_item ? $order->get_item_subtotal( $item, false, true ) : $order->get_item_total( $item, false, true );
 
-					// Maybe convert item subtotal.
+					// Maybe convert item total.
 					if ( 1.00 !== $exchange_rate ) {
-						$item_subtotal = wc_format_decimal( ( $item_subtotal * $exchange_rate ), wc_get_price_decimals() );
+						$item_total = wc_format_decimal( ( $item_total * $exchange_rate ), wc_get_price_decimals() );
 					}
 
-					$this->xml_append( $item_xml, 'UnitPrice', $item_subtotal, false );
+					$this->xml_append( $item_xml, 'UnitPrice', $item_total, false );
+
+					$product_dimensions[] = array(
+						'length' => wc_get_dimension( floatval( $product->get_length() ), 'in' ),
+						'width'  => wc_get_dimension( floatval( $product->get_width() ), 'in' ),
+						'height' => wc_get_dimension( floatval( $product->get_height() ), 'in' ),
+						'qty'    => $item_qty,
+					);
 				}
 
 				if ( $item->get_meta_data() ) {
@@ -379,8 +412,23 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 				continue;
 			}
 
+			// Get the first product's dimensions.
+			$dimensions = array_shift( $product_dimensions );
+
+			// Make sure the product item is only 1 and the quantity is also 1.
+			if (  empty( $product_dimensions ) && ! empty( $dimensions['qty'] ) && 1 === $dimensions['qty'] ) {
+				$dimensions_xml = $xml->createElement( 'Dimensions' );
+
+				$this->xml_append( $dimensions_xml, 'Length', $dimensions['length'], false );
+				$this->xml_append( $dimensions_xml, 'Width', $dimensions['width'], false );
+				$this->xml_append( $dimensions_xml, 'Height', $dimensions['height'], false );
+				$this->xml_append( $dimensions_xml, 'DimensionUnits', 'in', false );
+
+				$order_xml->appendChild( $dimensions_xml );
+			}
+
 			// Append cart level discount line.
-			if ( $order->get_total_discount() ) {
+			if ( $export_discounts_as_separate_item && $order->get_total_discount() ) {
 				$item_xml = $xml->createElement( 'Item' );
 				$this->xml_append( $item_xml, 'SKU', 'total-discount' );
 				$this->xml_append( $item_xml, 'Name', __( 'Total Discount', 'woocommerce-shipstation-integration' ) );
