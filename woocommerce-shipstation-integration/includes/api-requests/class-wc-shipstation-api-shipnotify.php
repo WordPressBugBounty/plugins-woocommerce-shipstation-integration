@@ -116,7 +116,7 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		 * Sequential Order Numbers & Sequential Order Numbers Pro. However there
 		 * is no additional filter for plugins to modify this order ID if needed.
 		 *
-		 * @param int Order ID.
+		 * @param int $order_id Order ID.
 		 *
 		 * @since 4.1.6
 		 */
@@ -332,9 +332,9 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 				$order->save_meta_data();
 			}
 
-			$is_customer_note = 0;
+			$is_customer_note = false;
 		} else {
-			$is_customer_note = ( WC_ShipStation_Integration::$shipped_status !== $current_status ) ? 1 : 0;
+			$is_customer_note = WC_ShipStation_Integration::$shipped_status !== $current_status;
 		}
 
 		$tracking_data = array(
@@ -365,7 +365,7 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 			/**
 			* Allow to override should tracking note be sent to customer.
 			*
-			* @param bool $order_shipped
+			* @param bool $is_customer_note
 			* @param string $order_note
 			* @param WC_Order $order
 			* @param array $tracking_data

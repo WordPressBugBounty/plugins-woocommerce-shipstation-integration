@@ -1,5 +1,9 @@
 *** ShipStation for WooCommerce ***
 
+= 4.5.2 - 2025-05-26 =
+* Fix   - Security updates.
+* Tweak - Update ShipStation branding.
+
 = 4.5.1 - 2025-04-22 =
 * Add   - Include the product dimensions when exporting an order to ShipStation.
 * Tweak - Added a filter to allow the user to disable exporting order discounts as a separate line item to ShipStation.

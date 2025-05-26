@@ -113,12 +113,17 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 
 		$orders_xml = $xml->createElement( 'Orders' );
 
+		/**
+		 * Loop through each order ID and process for export.
+		 *
+		 * @var int $order_id
+		 */
 		foreach ( $orders_to_export as $order_id ) {
 			/**
 			 * Allow third party to skip the export of certain order ID.
 			 *
-			 * @param boolean Flag to skip the export.
-			 * @param int Order ID.
+			 * @param boolean $flag Flag to skip the export.
+			 * @param int     $order_id Order ID.
 			 *
 			 * @since 4.1.42
 			 */
@@ -151,7 +156,8 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			 * the ShipStation account currency. ShipStation does not do currency
 			 * conversion, so the conversion must be done before the order is exported.
 			 *
-			 * @param string $currency_code The currency code to use for the order.
+			 * @param string   $currency_code The currency code to use for the order.
+			 * @param WC_Order $order WooCommerce Order object.
 			 *
 			 * @since 4.3.7
 			 */
@@ -159,7 +165,8 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			/**
 			 * Allow 3rd parties to modify the exchange rate used for the order before exporting to ShipStation.
 			 *
-			 * @param float $exchange_rate The exchange rate to use for the order.
+			 * @param float    $exchange_rate The exchange rate to use for the order.
+			 * @param WC_Order $order Order object.
 			 *
 			 * @since 4.3.7
 			 */
@@ -212,7 +219,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 
 			$this->xml_append( $order_xml, 'CurrencyCode', $currency_code, false );
 
-			$order_total = $order->get_total() - $order->get_total_refunded();
+			$order_total = $order->get_total() - floatval( $order->get_total_refunded() );
 			$tax_amount  = wc_round_tax_total( $order->get_total_tax() );
 
 			// Maybe convert the order total and tax amount.
@@ -225,17 +232,17 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$this->xml_append( $order_xml, 'TaxAmount', $tax_amount, false );
 
 			if ( class_exists( 'WC_COG' ) ) {
-				$wc_cog_order_total_cost = wc_format_decimal( $order->get_meta( '_wc_cog_order_total_cost', true ) );
+				$wc_cog_order_total_cost = floatval( $order->get_meta( '_wc_cog_order_total_cost', true ) );
 
 				// Maybe convert the order total cost of goods.
 				if ( 1.00 !== $exchange_rate ) {
-					$wc_cog_order_total_cost = wc_format_decimal( ( $wc_cog_order_total_cost * $exchange_rate ), wc_get_price_decimals() );
+					$wc_cog_order_total_cost = $wc_cog_order_total_cost * $exchange_rate;
 				}
 
-				$this->xml_append( $order_xml, 'CostOfGoods', $wc_cog_order_total_cost, false );
+				$this->xml_append( $order_xml, 'CostOfGoods', wc_format_decimal( $wc_cog_order_total_cost, wc_get_price_decimals() ), false );
 			}
 
-			$shipping_total = $order->get_shipping_total();
+			$shipping_total = floatval( $order->get_shipping_total() );
 
 			// Maybe convert the shipping total.
 			if ( 1.00 !== $exchange_rate ) {
@@ -247,7 +254,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$this->xml_append( $order_xml, 'InternalNotes', implode( ' | ', $this->get_order_notes( $order ) ) );
 
 			// Custom fields - 1 is used for coupon codes.
-			$this->xml_append( $order_xml, 'CustomField1', implode( ' | ', version_compare( WC_VERSION, '3.7', 'ge' ) ? $order->get_coupon_codes() : $order->get_used_coupons() ) );
+			$this->xml_append( $order_xml, 'CustomField1', implode( ' | ', $order->get_coupon_codes() ) );
 
 			// Custom fields 2 and 3 can be mapped to a custom field via the following filters.
 
@@ -416,7 +423,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$dimensions = array_shift( $product_dimensions );
 
 			// Make sure the product item is only 1 and the quantity is also 1.
-			if (  empty( $product_dimensions ) && ! empty( $dimensions['qty'] ) && 1 === $dimensions['qty'] ) {
+			if ( empty( $product_dimensions ) && ! empty( $dimensions['qty'] ) && 1 === $dimensions['qty'] ) {
 				$dimensions_xml = $xml->createElement( 'Dimensions' );
 
 				$this->xml_append( $dimensions_xml, 'Length', $dimensions['length'], false );
@@ -518,9 +525,9 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		/**
 		 * Allow third party to modify the address data.
 		 *
-		 * @param array Address data.
-		 * @param WC_Order Order object.
-		 * @param boolean
+		 * @param array    $address Address data.
+		 * @param WC_Order $order Order object.
+		 * @param boolean  $is_export_address Flag to export address data or not.
 		 *
 		 * @since 4.2.0
 		 */
@@ -560,7 +567,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			'type'    => 'order_note',
 		);
 
-		remove_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10, 1 );
+		remove_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10 );
 		$notes = get_comments( $args );
 		add_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10, 1 );
 
@@ -578,13 +585,13 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 	/**
 	 * Append XML as cdata.
 	 *
-	 * @param DomDocument $append_to XML Dom to append to.
-	 * @param string      $name Element name.
-	 * @param mixed       $value Element value.
-	 * @param boolean     $cdata Using cData or not.
+	 * @param DOMElement $append_to XML DOMElement to append to.
+	 * @param string     $name      Element name.
+	 * @param mixed      $value     Element value.
+	 * @param boolean    $cdata     Using cData or not.
 	 */
 	private function xml_append( $append_to, $name, $value, $cdata = true ) {
-		// phpcs:disable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase --- Using DomDocument class from PHP which using camelCase
+		// phpcs:disable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase --- ownerDocument is the correct property.
 		$data = $append_to->appendChild( $append_to->ownerDocument->createElement( $name ) );
 
 		if ( $cdata ) {

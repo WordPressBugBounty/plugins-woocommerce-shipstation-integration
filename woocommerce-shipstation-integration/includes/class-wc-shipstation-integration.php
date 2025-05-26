@@ -73,7 +73,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 		$this->settings['auth_key'] = self::$auth_key;
 
 		// Hooks.
-		add_action( 'woocommerce_update_options_integration_shipstation', array( $this, 'process_admin_options' ) );
+		add_action( 'woocommerce_update_options_integration_shipstation', array( $this, 'update_shipstation_options' ) );
 		add_filter( 'woocommerce_subscriptions_renewal_order_meta_query', array( $this, 'subscriptions_renewal_order_meta_query' ), 10, 4 );
 		add_action( 'wp_loaded', array( $this, 'hide_notices' ) );
 		add_filter( 'woocommerce_translations_updates_for_woocommerce_shipstation_integration', '__return_true' );
@@ -91,6 +91,15 @@ class WC_ShipStation_Integration extends WC_Integration {
 
 		add_filter( 'woocommerce_order_query_args', array( $this, 'add_order_number_query_vars_for_hpos' ), 10, 1 );
 		add_filter( 'woocommerce_order_data_store_cpt_get_orders_query', array( $this, 'add_order_number_query_vars_for_cpt' ), 10, 2 );
+	}
+
+	/**
+	 * Update options for ShipStation settings.
+	 * This method is needed for `woocommerce_update_options_integration_shipstation` action hook.
+	 * `WC_Integration::process_admin_options()` cannot be used directly to that action hook as it return value and PHPStan won't allow it.
+	 */
+	public function update_shipstation_options() {
+		$this->process_admin_options();
 	}
 
 	/**
@@ -161,7 +170,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 	/**
 	 * Prevents WooCommerce Subscriptions from copying across certain meta keys to renewal orders.
 	 *
-	 * @param array  $order_meta_query Order meta query.
+	 * @param string $order_meta_query Order meta query.
 	 * @param int    $original_order_id Original order ID.
 	 * @param int    $renewal_order_id Order ID after being renewed.
 	 * @param string $new_order_role New order role.
@@ -215,7 +224,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 		$logo_title = __( 'ShipStation logo', 'woocommerce-shipstation-integration' );
 		?>
 		<div class="notice notice-warning">
-			<img class="shipstation-logo" alt="<?php echo esc_attr( $logo_title ); ?>" title="<?php echo esc_attr( $logo_title ); ?>" src="<?php echo esc_url( plugins_url( 'assets/images/shipstation-logo-blue.png', __DIR__ ) ); ?>" />
+			<img class="shipstation-logo" alt="<?php echo esc_attr( $logo_title ); ?>" title="<?php echo esc_attr( $logo_title ); ?>" src="<?php echo esc_url( plugins_url( 'assets/images/shipstation-logo.svg', __DIR__ ) ); ?>" />
 			<a class="woocommerce-message-close notice-dismiss woocommerce-shipstation-activation-notice-dismiss" href="<?php echo esc_url( wp_nonce_url( add_query_arg( 'wc-shipstation-hide-notice', '' ), 'wc_shipstation_hide_notices_nonce', '_wc_shipstation_notice_nonce' ) ); ?>"></a>
 			<p>
 				<?php

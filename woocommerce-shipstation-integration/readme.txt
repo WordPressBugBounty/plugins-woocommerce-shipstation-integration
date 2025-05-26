@@ -1,4 +1,4 @@
-=== WooCommerce ShipStation Integration ===
+=== ShipStation for WooCommerce ===
 Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, dwainm, laurendavissmith001, Kloon
 Tags: shipping, woocommerce, automattic
 Requires at least: 6.6
@@ -7,15 +7,17 @@ WC tested up to: 9.8
 WC requires at least: 9.6
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.5.1
+Stable tag: 4.5.2
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Ship with confidence, save big on top carriers, and streamline the entire fulfillment process with the WooCommerce ShipStation Integration.
+Ship your WooCommerce orders with confidence, save on top carriers, and automate your processes with ShipStation.
 
 == Description ==
 
-Ship with confidence, save big on top carriers, and streamline the entire fulfillment process with the WooCommerce ShipStation Integration.
+Ship your WooCommerce orders with confidence, save on top carriers, and automate your processes with ShipStation.
+
+https://www.youtube.com/watch?v=p7603LVyp9M&t=100s
 
 = Features =
 - __Save money;__ get up to 84% off with top carriers, including UPS, USPS, and DHL Express.
@@ -46,7 +48,7 @@ ShipStation powers global shipping success for businesses of all sizes. It strea
 == Frequently Asked Questions ==
 
 = Where can I find documentation and a setup guide? =
-You’ve come to the right place. [Our documentation](https://woocommerce.com/document/shipstation-for-woocommerce/) for WooCommerce ShipStation Integration includes detailed setup instructions, troubleshooting tips, and more.
+You’ve come to the right place. [Our documentation](https://woocommerce.com/document/shipstation-for-woocommerce/) for ShipStation for WooCommerce includes detailed setup instructions, troubleshooting tips, and more.
 
 = Where can I get support? =
 To start, [review our troubleshooting tips](https://woocommerce.com/document/shipstation-for-woocommerce/#troubleshooting) for answers to common questions. Then, if you need further assistance, get in touch via the [official support forum](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
@@ -67,6 +69,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.5.2 - 2025-05-26 =
+* Fix   - Security updates.
+* Tweak - Update ShipStation branding.
 
 = 4.5.1 - 2025-04-22 =
 * Add   - Include the product dimensions when exporting an order to ShipStation.
