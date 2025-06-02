@@ -384,6 +384,9 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		/**
 		 * Trigger action for other integrations.
 		 *
+		 * @param WC_Order $order Order object.
+		 * @param array    $tracking_data Tracking data.
+		 *
 		 * @since 4.0.1
 		 */
 		do_action(
@@ -415,6 +418,20 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 
 			/* translators: 1) order ID 2) shipment status */
 			$this->log( sprintf( __( 'Updated order %1$s to status %2$s', 'woocommerce-shipstation-integration' ), $order_id, WC_ShipStation_Integration::$shipped_status ) );
+
+			/**
+			 * Trigger action after the order status is changed for other integrations.
+			 *
+			 * @param WC_Order $order Order object.
+			 * @param array    $tracking_data Tracking data.
+			 *
+			 * @since 4.5.2
+			 */
+			do_action(
+				'woocommerce_shipstation_shipnotify_status_updated',
+				$order,
+				$tracking_data
+			);
 		}
 
 		status_header( 200 );
