@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 4.6.1 - 2025-06-09 =
+* Tweak - WooCommerce 9.9 compatibility.
+
 = 4.6.0 - 2025-06-02 =
 * Add   - New hook `woocommerce_shipstation_shipnotify_status_updated` that will be called after the order status is changed.
 

@@ -1,13 +1,13 @@
 === ShipStation for WooCommerce ===
 Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, dwainm, laurendavissmith001, Kloon
 Tags: shipping, woocommerce, automattic
-Requires at least: 6.6
+Requires at least: 6.7
 Tested up to: 6.8
-WC tested up to: 9.8
-WC requires at least: 9.6
+WC tested up to: 9.9
+WC requires at least: 9.7
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.6.0
+Stable tag: 4.6.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -69,6 +69,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.6.1 - 2025-06-09 =
+* Tweak - WooCommerce 9.9 compatibility.
 
 = 4.6.0 - 2025-06-02 =
 * Add   - New hook `woocommerce_shipstation_shipnotify_status_updated` that will be called after the order status is changed.
