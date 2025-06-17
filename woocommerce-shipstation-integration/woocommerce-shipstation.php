@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ShipStation for WooCommerce
  * Plugin URI: https://woocommerce.com/products/shipstation-integration/
- * Version: 4.6.1
+ * Version: 4.7.0
  * Description: Ship your WooCommerce orders with confidence, save on top carriers, and automate your processes with ShipStation.
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
@@ -22,8 +22,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+use WooCommerce\Shipping\ShipStation\REST_API_Loader;
+
 define( 'WC_SHIPSTATION_FILE', __FILE__ );
 define( 'WC_SHIPSTATION_ABSPATH', trailingslashit( __DIR__ ) );
+
+if ( ! defined( 'WC_SHIPSTATION_PLUGIN_DIR' ) ) {
+	define( 'WC_SHIPSTATION_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+}
+
+if ( ! defined( 'WC_SHIPSTATION_PLUGIN_URL' ) ) {
+	define( 'WC_SHIPSTATION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+}
 
 /**
  * WooCommerce fallback notice.
@@ -49,7 +59,7 @@ function woocommerce_shipstation_init() {
 		return;
 	}
 
-	define( 'WC_SHIPSTATION_VERSION', '4.6.1' ); // WRCS: DEFINED_VERSION.
+	define( 'WC_SHIPSTATION_VERSION', '4.7.0' ); // WRCS: DEFINED_VERSION.
 
 	if ( ! defined( 'WC_SHIPSTATION_EXPORT_LIMIT' ) ) {
 		define( 'WC_SHIPSTATION_EXPORT_LIMIT', 100 );
@@ -59,6 +69,7 @@ function woocommerce_shipstation_init() {
 
 	add_action( 'before_woocommerce_init', 'woocommerce_shipstation_before_woocommerce_init' );
 	add_action( 'after_setup_theme', 'woocommerce_shipstation_load_textdomain' );
+	add_action( 'woocommerce_init', 'woocommerce_shipstation_load_rest_api' );
 }
 
 add_action( 'plugins_loaded', 'woocommerce_shipstation_init' );
@@ -81,7 +92,22 @@ function woocommerce_shipstation_includes() {
 	// Include order util trait class file.
 	require_once WC_SHIPSTATION_ABSPATH . 'includes/trait-woocommerce-order-util.php';
 	include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
+	include_once WC_SHIPSTATION_ABSPATH . 'includes/class-checkout.php';
 	include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-privacy.php';
+}
+
+/**
+ * Initialize REST API.
+ *
+ * @since 4.5.2
+ */
+function woocommerce_shipstation_load_rest_api() {
+	// Load REST API loader class file.
+	require_once WC_SHIPSTATION_ABSPATH . 'includes/class-rest-api-loader.php';
+
+	// Initialize REST API.
+	$rest_loader = new REST_API_Loader();
+	$rest_loader->init();
 }
 
 /**

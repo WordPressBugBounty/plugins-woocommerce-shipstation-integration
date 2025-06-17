@@ -9,7 +9,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-require_once WC_SHIPSTATION_ABSPATH . 'includes/api-requests/class-wc-shipstation-api-request.php';
+require_once WC_SHIPSTATION_ABSPATH . 'includes/api/requests/class-wc-shipstation-api-request.php';
 
 /**
  * WC_Shipstation_API Class
@@ -94,7 +94,7 @@ class WC_Shipstation_API extends WC_Shipstation_API_Request {
 
 			/* translators: 1: query string */
 			$this->log( sprintf( esc_html__( 'Input params: %s', 'woocommerce-shipstation-integration' ), http_build_query( $obfuscated_request ) ) );
-			$request_class = include WC_SHIPSTATION_ABSPATH . 'includes/api-requests/class-wc-shipstation-api-' . $this->request['action'] . '.php';
+			$request_class = include WC_SHIPSTATION_ABSPATH . 'includes/api/requests/class-wc-shipstation-api-' . $this->request['action'] . '.php';
 			$request_class->request();
 		} else {
 			$this->trigger_error( esc_html__( 'Invalid request', 'woocommerce-shipstation-integration' ) );

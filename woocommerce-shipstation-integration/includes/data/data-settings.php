@@ -66,12 +66,20 @@ $fields = array(
 		'desc_tip'    => true,
 		'default'     => 'wc-completed',
 	),
+	'gift_enabled'    => array(
+		'title'       => __( 'Gift', 'woocommerce-shipstation-integration' ),
+		'label'       => __( 'Enable Gift options at checkout page', 'woocommerce-shipstation-integration' ),
+		'type'        => 'checkbox',
+		'description' => __( 'Allow customer to mark their order as a gift and include a personalized message.', 'woocommerce-shipstation-integration' ),
+		'desc_tip'    => __( 'Enable gift fields on the checkout page.', 'woocommerce-shipstation-integration' ),
+		'default'     => 'no',
+	),
 	'logging_enabled' => array(
 		'title'       => __( 'Logging', 'woocommerce-shipstation-integration' ),
 		'label'       => __( 'Enable Logging', 'woocommerce-shipstation-integration' ),
 		'type'        => 'checkbox',
 		'description' => __( 'Note: this may log personal information. We recommend using this for debugging purposes only and deleting the logs when finished.', 'woocommerce-shipstation-integration' ),
-		'desc_tip'    => 'Log all API interactions.',
+		'desc_tip'    => __( 'Log all API interactions.', 'woocommerce-shipstation-integration' ),
 		'default'     => 'yes',
 	),
 );

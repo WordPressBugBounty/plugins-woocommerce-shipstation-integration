@@ -7,7 +7,7 @@ WC tested up to: 9.9
 WC requires at least: 9.7
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.6.1
+Stable tag: 4.7.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -70,11 +70,16 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 
 == Changelog ==
 
+= 4.7.0 - 2025-06-17 =
+* Add   - REST API endpoints to update and retrieve product inventory data.
+* Add   - Gift feature.
+
 = 4.6.1 - 2025-06-09 =
 * Tweak - WooCommerce 9.9 compatibility.
 
 = 4.6.0 - 2025-06-02 =
 * Add   - New hook `woocommerce_shipstation_shipnotify_status_updated` that will be called after the order status is changed.
+* Add   - REST API endpoints to update and retrieve product inventory data.
 
 = 4.5.2 - 2025-05-26 =
 * Fix   - Security updates.

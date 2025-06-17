@@ -47,6 +47,23 @@ class WC_ShipStation_Integration extends WC_Integration {
 	public static $shipped_status = null;
 
 	/**
+	 * Gift enable flag.
+	 *
+	 * @var boolean
+	 */
+	public static $gift_enabled = false;
+
+	/**
+	 * Order meta keys.
+	 *
+	 * @var array
+	 */
+	public static array $order_meta_keys = array(
+		'is_gift'      => 'shipstation_is_gift',
+		'gift_message' => 'shipstation_gift_message',
+	);
+
+	/**
 	 * Constructor
 	 */
 	public function __construct() {
@@ -68,6 +85,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 		self::$export_statuses = $this->get_option( 'export_statuses', array( 'wc-processing', 'wc-on-hold', 'wc-completed', 'wc-cancelled' ) );
 		self::$logging_enabled = 'yes' === $this->get_option( 'logging_enabled', 'yes' );
 		self::$shipped_status  = $this->get_option( 'shipped_status', 'wc-completed' );
+		self::$gift_enabled    = 'yes' === $this->get_option( 'gift_enabled', 'no' );
 
 		// Force saved .
 		$this->settings['auth_key'] = self::$auth_key;
