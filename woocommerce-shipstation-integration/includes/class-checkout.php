@@ -608,13 +608,13 @@ class Checkout {
 	 * When context is 'edit', removes gift fields from shipping fields to prevent editing the fields.
 	 * When context is not 'edit', adds gift data to shipping fields if the order is marked as gift.
 	 *
-	 * @param array    $shipping_fields List of shipping fields to display in admin.
-	 * @param WC_Order $order           WooCommerce order object containing gift data.
-	 * @param string   $context         Context of display - 'edit' for editing, other for viewing.
+	 * @param array          $shipping_fields List of shipping fields to display in admin.
+	 * @param WC_Order|false $order           WooCommerce order object containing gift data.
+	 * @param string         $context         Context of display - 'edit' for editing, other for viewing.
 	 *
 	 * @return array Modified list of shipping fields including gift data if applicable.
 	 */
-	public function maybe_display_gift_data_below_admin_shipping_fields( array $shipping_fields, WC_Order $order, string $context ): array {
+	public function maybe_display_gift_data_below_admin_shipping_fields( $shipping_fields, $order, $context ): array {
 
 		// Hide fields in edit context, don't allow to edit values.
 		if ( 'edit' === $context ) {
@@ -622,6 +622,10 @@ class Checkout {
 				unset( $shipping_fields[ self::get_namespaced_field_key( $gift_field['id'] ) ] );
 			}
 
+			return $shipping_fields;
+		}
+
+		if ( ! $order instanceof WC_Order ) {
 			return $shipping_fields;
 		}
 

@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 4.7.1 - 2025-06-18 =
+* Fix   - Fatal error on WooCommerce Subscriptions edit page.
+
 = 4.7.0 - 2025-06-17 =
 * Add   - REST API endpoints to update and retrieve product inventory data.
 * Add   - Gift feature.
