@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 4.7.2 - 2025-06-24 =
+* Fix   - Fatal error on Checkout page.
+
 = 4.7.1 - 2025-06-18 =
 * Fix   - Fatal error on WooCommerce Subscriptions edit page.
 

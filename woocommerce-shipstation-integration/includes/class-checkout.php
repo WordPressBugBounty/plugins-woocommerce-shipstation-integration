@@ -11,13 +11,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-use Automattic\WooCommerce\Blocks\Utils\CartCheckoutUtils;
 use Exception;
 use WC_Cart;
 use WC_Order;
 use WP_Error;
 use WP_HTML_Tag_Processor;
-use WP_Post;
 use Automattic\WooCommerce\Blocks\Domain\Services\CheckoutFields;
 use WC_ShipStation_Integration;
 
@@ -86,12 +84,16 @@ class Checkout {
 			return;
 		}
 
+		if ( ! self::cart_needs_shipping() ) {
+			return;
+		}
+
 		if ( self::is_block_checkout() ) {
 			wp_enqueue_style( 'shipstation-block-checkout', WC_SHIPSTATION_PLUGIN_URL . 'assets/css/block-checkout.css', array(), WC_SHIPSTATION_VERSION );
 			wp_add_inline_style( 'shipstation-block-checkout', $this->display_gift_field_descriptions_on_block_checkout() );
 		}
 
-		if ( self::is_classic_checkout() && self::cart_needs_shipping() ) {
+		if ( self::is_classic_checkout() ) {
 			wp_enqueue_style( 'shipstation-classic-checkout', WC_SHIPSTATION_PLUGIN_URL . 'assets/css/classic-checkout.css', array(), WC_SHIPSTATION_VERSION );
 
 			$suffix = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
@@ -254,12 +256,12 @@ class Checkout {
 		}
 
 		// Don't deregister fields in admin or on irrelevant frontend pages.
-		if ( is_admin() || ( ! is_wc_endpoint_url() && ! self::is_checkout() ) ) {
+		if ( is_admin() || ! self::is_checkout() ) {
 			return;
 		}
 
 		// Keep fields if we're on a regular checkout page and the cart needs shipping.
-		if ( self::is_checkout() && ! is_wc_endpoint_url() && self::cart_needs_shipping() ) {
+		if ( self::cart_needs_shipping() ) {
 			return;
 		}
 
@@ -548,7 +550,6 @@ class Checkout {
 	public function maybe_display_order_gift_data_for_customers( $order ): void {
 		$order = wc_get_order( $order );
 
-
 		if ( ! $order instanceof WC_Order ) {
 			return;
 		}
@@ -747,7 +748,7 @@ class Checkout {
 	 * @return bool
 	 */
 	private static function is_checkout(): bool {
-		return self::is_block_checkout() || self::is_classic_checkout() || is_checkout();
+		return self::is_block_checkout() || self::is_classic_checkout();
 	}
 
 	/**
@@ -756,7 +757,13 @@ class Checkout {
 	 * @return bool
 	 */
 	private static function is_block_checkout(): bool {
-		return has_block( 'woocommerce/checkout' );
+		if (
+			! function_exists( 'is_checkout' )
+			|| ! function_exists( 'has_block' )
+		) {
+			return false;
+		}
+		return is_checkout() && has_block( 'woocommerce/checkout' );
 	}
 
 	/**
@@ -765,14 +772,14 @@ class Checkout {
 	 * @return bool
 	 */
 	private static function is_classic_checkout(): bool {
-		$post = get_queried_object();
-
-		if ( ! $post instanceof WP_Post ) {
+		if (
+			! function_exists( 'is_checkout' )
+			|| ! function_exists( 'wc_post_content_has_shortcode' )
+			|| ! function_exists( 'has_block' )
+		) {
 			return false;
 		}
-
-		// @phpstan-ignore-next-line
-		return CartCheckoutUtils::is_checkout_page() && ( has_shortcode( $post->post_content, 'woocommerce_checkout' ) || has_block( 'woocommerce/classic-shortcode', $post ) );
+		return is_checkout() && ( wc_post_content_has_shortcode( 'woocommerce_checkout' ) || has_block( 'woocommerce/classic-shortcode' ) );
 	}
 
 	/**
