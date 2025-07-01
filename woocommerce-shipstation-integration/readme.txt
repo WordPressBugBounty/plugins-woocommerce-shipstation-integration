@@ -7,7 +7,7 @@ WC tested up to: 9.9
 WC requires at least: 9.7
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.7.2
+Stable tag: 4.7.3
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -69,6 +69,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.7.3 - 2025-06-30 =
+* Fix   - Compatibility issue with WooCommerce version lower than 8.9.
 
 = 4.7.2 - 2025-06-24 =
 * Fix   - Fatal error on Checkout page.

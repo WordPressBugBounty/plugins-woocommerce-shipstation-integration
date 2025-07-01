@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ShipStation for WooCommerce
  * Plugin URI: https://woocommerce.com/products/shipstation-integration/
- * Version: 4.7.2
+ * Version: 4.7.3
  * Description: Ship your WooCommerce orders with confidence, save on top carriers, and automate your processes with ShipStation.
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
@@ -14,6 +14,10 @@
  * Tested up to: 6.8
  * WC requires at least: 9.7
  * WC tested up to: 9.9
+ *
+ * Copyright: © 2025 WooCommerce
+ * License: GPLv3
+ * License URI: https://www.gnu.org/licenses/gpl-3.0.html
  *
  * @package WC_ShipStation
  */
@@ -59,7 +63,7 @@ function woocommerce_shipstation_init() {
 		return;
 	}
 
-	define( 'WC_SHIPSTATION_VERSION', '4.7.2' ); // WRCS: DEFINED_VERSION.
+	define( 'WC_SHIPSTATION_VERSION', '4.7.3' ); // WRCS: DEFINED_VERSION.
 
 	if ( ! defined( 'WC_SHIPSTATION_EXPORT_LIMIT' ) ) {
 		define( 'WC_SHIPSTATION_EXPORT_LIMIT', 100 );
@@ -92,8 +96,13 @@ function woocommerce_shipstation_includes() {
 	// Include order util trait class file.
 	require_once WC_SHIPSTATION_ABSPATH . 'includes/trait-woocommerce-order-util.php';
 	include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
-	include_once WC_SHIPSTATION_ABSPATH . 'includes/class-checkout.php';
 	include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-privacy.php';
+
+	// Include the Checkout class if WooCommerce version is 9.7.0 or higher.
+	// This class is used to handle the gift message feature in the checkout process.
+	if ( version_compare( WC()->version, '9.7.0', '>=' ) ) {
+		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-checkout.php';
+	}
 }
 
 /**

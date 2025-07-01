@@ -183,6 +183,12 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 */
 	public function init_form_fields() {
 		$this->form_fields = include WC_SHIPSTATION_ABSPATH . 'includes/data/data-settings.php';
+
+		// If Checkout class does not exist, disable the gift option.
+		if ( ! class_exists( 'WooCommerce\Shipping\ShipStation\Checkout' ) ) {
+			$this->form_fields['gift_enabled']['custom_attributes'] = array( 'disabled' => 'disabled' );
+			$this->form_fields['gift_enabled']['description']       = __( 'This feature requires WooCommerce 9.7.0 or higher.', 'woocommerce-shipstation-integration' );
+		}
 	}
 
 	/**

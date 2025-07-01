@@ -1,11 +1,11 @@
 # Copyright (C) 2025 WooCommerce
-# This file is distributed under the same license as the ShipStation for WooCommerce package.
+# This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: ShipStation for WooCommerce 4.7.2\n"
+"Project-Id-Version: ShipStation for WooCommerce 4.7.3\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/woocommerce-shipstation\n"
-"POT-Creation-Date: 2025-06-24 15:32:25+00:00\n"
+"POT-Creation-Date: 2025-06-30 19:17:20+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -249,19 +249,23 @@ msgid ""
 "&amp; packing slips with ease."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:221
+#: includes/class-wc-shipstation-integration.php:190
+msgid "This feature requires WooCommerce 9.7.0 or higher."
+msgstr ""
+
+#: includes/class-wc-shipstation-integration.php:227
 msgid "Action failed. Please refresh the page and retry."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:226
+#: includes/class-wc-shipstation-integration.php:232
 msgid "Cheatin&#8217; huh?"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:242
+#: includes/class-wc-shipstation-integration.php:248
 msgid "ShipStation logo"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:252
+#: includes/class-wc-shipstation-integration.php:258
 #. translators: %s: ShipStation URL
 msgid ""
 "To begin printing shipping labels with ShipStation head over to <a "
@@ -269,18 +273,18 @@ msgid ""
 "target=\"_blank\">ShipStation.com</a> and log in or create a new account."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:270
+#: includes/class-wc-shipstation-integration.php:276
 #. translators: %s: ShipStation Auth Key
 msgid ""
 "After logging in, add a selling channel for WooCommerce and use your Auth "
 "Key (<code>%s</code>) to connect your store."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:277
+#: includes/class-wc-shipstation-integration.php:283
 msgid "Once connected you're good to go!"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:284
+#: includes/class-wc-shipstation-integration.php:290
 #. translators: %1$s: ShipStation plugin settings URL, %2$s: ShipStation
 #. documentation URL
 msgid ""
@@ -397,22 +401,22 @@ msgstr ""
 msgid "Log all API interactions."
 msgstr ""
 
-#: woocommerce-shipstation.php:47
+#: woocommerce-shipstation.php:51
 #. translators: %s WC download URL link.
 msgid ""
 "Shipstation requires WooCommerce to be installed and active. You can "
 "download %s here."
 msgstr ""
 
-#: woocommerce-shipstation.php:163
+#: woocommerce-shipstation.php:172
 msgid "Settings"
 msgstr ""
 
-#: woocommerce-shipstation.php:164
+#: woocommerce-shipstation.php:173
 msgid "Support"
 msgstr ""
 
-#: woocommerce-shipstation.php:165
+#: woocommerce-shipstation.php:174
 msgid "Docs"
 msgstr ""
 

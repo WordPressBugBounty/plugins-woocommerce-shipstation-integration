@@ -255,7 +255,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$this->xml_append( $order_xml, 'InternalNotes', implode( ' | ', $this->get_order_notes( $order ) ) );
 
 			// Maybe append the gift and gift message XML element.
-			if ( $order->get_meta( Checkout::get_block_prefixed_meta_key( 'is_gift' ) ) ) {
+			if ( class_exists( 'WooCommerce\Shipping\ShipStation\Checkout' ) && $order->get_meta( Checkout::get_block_prefixed_meta_key( 'is_gift' ) ) ) {
 				$this->xml_append( $order_xml, 'Gift', 'true', false );
 
 				$gift_message = $order->get_meta( Checkout::get_block_prefixed_meta_key( 'gift_message' ) );
