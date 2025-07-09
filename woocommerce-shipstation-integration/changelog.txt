@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 4.7.4 - 2025-07-07 =
+* Tweak - WooCommerce 10.0 compatibility.
+
 = 4.7.3 - 2025-06-30 =
 * Fix   - Compatibility issue with WooCommerce version lower than 8.9.
 

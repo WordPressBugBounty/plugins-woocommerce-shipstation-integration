@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, automattic
 Requires at least: 6.7
 Tested up to: 6.8
-WC tested up to: 9.9
-WC requires at least: 9.7
+WC tested up to: 10.0
+WC requires at least: 9.8
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.7.3
+Stable tag: 4.7.4
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -69,6 +69,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.7.4 - 2025-07-07 =
+* Tweak - WooCommerce 10.0 compatibility.
 
 = 4.7.3 - 2025-06-30 =
 * Fix   - Compatibility issue with WooCommerce version lower than 8.9.
