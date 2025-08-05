@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ShipStation for WooCommerce
  * Plugin URI: https://woocommerce.com/products/shipstation-integration/
- * Version: 4.7.4
+ * Version: 4.7.5
  * Description: Ship your WooCommerce orders with confidence, save on top carriers, and automate your processes with ShipStation.
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
@@ -63,7 +63,7 @@ function woocommerce_shipstation_init() {
 		return;
 	}
 
-	define( 'WC_SHIPSTATION_VERSION', '4.7.4' ); // WRCS: DEFINED_VERSION.
+	define( 'WC_SHIPSTATION_VERSION', '4.7.5' ); // WRCS: DEFINED_VERSION.
 
 	if ( ! defined( 'WC_SHIPSTATION_EXPORT_LIMIT' ) ) {
 		define( 'WC_SHIPSTATION_EXPORT_LIMIT', 100 );
@@ -72,7 +72,6 @@ function woocommerce_shipstation_init() {
 	woocommerce_shipstation_includes();
 
 	add_action( 'before_woocommerce_init', 'woocommerce_shipstation_before_woocommerce_init' );
-	add_action( 'after_setup_theme', 'woocommerce_shipstation_load_textdomain' );
 	add_action( 'woocommerce_init', 'woocommerce_shipstation_load_rest_api' );
 }
 
@@ -119,14 +118,6 @@ function woocommerce_shipstation_load_rest_api() {
 	$rest_loader->init();
 }
 
-/**
- * Localisation.
- *
- * @since 4.4.5
- */
-function woocommerce_shipstation_load_textdomain() {
-	load_plugin_textdomain( 'woocommerce-shipstation-integration', false, plugin_basename( WC_SHIPSTATION_ABSPATH ) . '/languages/' );
-}
 
 /**
  * Define integration.

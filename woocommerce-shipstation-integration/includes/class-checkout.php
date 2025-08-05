@@ -733,13 +733,21 @@ class Checkout {
 	 * @return bool
 	 */
 	private static function cart_needs_shipping(): bool {
-		$cart = WC()->cart;
-
-		if ( ! $cart instanceof WC_Cart ) {
+		if ( ! WC()->cart instanceof WC_Cart || ! wc_shipping_enabled() ) {
 			return false;
 		}
 
-		return $cart->needs_shipping();
+		foreach ( WC()->cart->get_cart_contents() as $values ) {
+			if ( ! isset( $values['data'] ) || ! method_exists( $values['data'], 'needs_shipping' ) ) {
+				continue;
+			}
+
+			if ( $values['data']->needs_shipping() ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**

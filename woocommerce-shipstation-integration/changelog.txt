@@ -1,5 +1,9 @@
 *** ShipStation for WooCommerce ***
 
+= 4.7.5 - 2025-08-05 =
+* Fix   - Out of memory allocation error on checkout page.
+* Fix   - Remove deprecated load_plugin_textdomain() call.
+
 = 4.7.4 - 2025-07-07 =
 * Tweak - WooCommerce 10.0 compatibility.
 

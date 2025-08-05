@@ -2,10 +2,10 @@
 # This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: ShipStation for WooCommerce 4.7.4\n"
+"Project-Id-Version: ShipStation for WooCommerce 4.7.5\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/woocommerce-shipstation\n"
-"POT-Creation-Date: 2025-07-07 10:38:36+00:00\n"
+"POT-Creation-Date: 2025-08-05 13:25:19+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -215,8 +215,8 @@ msgstr ""
 msgid "No"
 msgstr ""
 
-#: includes/class-checkout.php:578 includes/class-checkout.php:888
-#: includes/class-checkout.php:893
+#: includes/class-checkout.php:578 includes/class-checkout.php:896
+#: includes/class-checkout.php:901
 msgid "Additional information"
 msgstr ""
 
@@ -408,15 +408,15 @@ msgid ""
 "download %s here."
 msgstr ""
 
-#: woocommerce-shipstation.php:172
+#: woocommerce-shipstation.php:163
 msgid "Settings"
 msgstr ""
 
-#: woocommerce-shipstation.php:173
+#: woocommerce-shipstation.php:164
 msgid "Support"
 msgstr ""
 
-#: woocommerce-shipstation.php:174
+#: woocommerce-shipstation.php:165
 msgid "Docs"
 msgstr ""
 

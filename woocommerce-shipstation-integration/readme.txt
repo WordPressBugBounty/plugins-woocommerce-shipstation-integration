@@ -7,7 +7,7 @@ WC tested up to: 10.0
 WC requires at least: 9.8
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.7.4
+Stable tag: 4.7.5
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -69,6 +69,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.7.5 - 2025-08-05 =
+* Fix   - Out of memory allocation error on checkout page.
+* Fix   - Remove deprecated load_plugin_textdomain() call.
 
 = 4.7.4 - 2025-07-07 =
 * Tweak - WooCommerce 10.0 compatibility.
