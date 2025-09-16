@@ -874,8 +874,8 @@ class Checkout {
 	 *
 	 * @return void
 	 */
-	public function display_gift_fields_in_order_email( WC_Order $order, bool $sent_to_admin = false, bool $plain_text = false ): void {
-		if ( ! WC_ShipStation_Integration::$gift_enabled ) {
+	public function display_gift_fields_in_order_email( $order, $sent_to_admin = false, $plain_text = false ): void {
+		if ( ! WC_ShipStation_Integration::$gift_enabled || ! $order instanceof WC_Order ) {
 			return;
 		}
 
@@ -892,7 +892,7 @@ class Checkout {
 			return;
 		}
 
-		if ( $plain_text ) {
+		if ( true === $plain_text ) {
 			echo "\n" . esc_html( wc_strtoupper( __( 'Additional information', 'woocommerce-shipstation-integration' ) ) ) . "\n\n";
 			foreach ( $gift_data['field_data'] as $field ) {
 				printf( "%s: %s\n", wp_kses_post( $field['label'] ), wp_kses_post( $field['value'] ) );

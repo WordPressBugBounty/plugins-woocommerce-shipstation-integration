@@ -7,7 +7,7 @@ WC tested up to: 10.2
 WC requires at least: 10.0
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.7.7
+Stable tag: 4.7.8
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -69,6 +69,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 == Changelog ==
+
+= 4.7.8 - 2025-09-16 =
+* Fix   - Error when processing renewal via WooCommerce Subscription.
 
 = 4.7.7 - 2025-09-15 =
 * Tweak - WooCommerce 10.2 compatibility.
