@@ -10,13 +10,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use WooCommerce\Shipping\ShipStation\Checkout;
-use WooCommerce\ShipStation\Order_Util;
+use WooCommerce\Shipping\ShipStation\Order_Util;
 
 /**
  * WC_Shipstation_API_Export Class
  */
 class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
-	use Order_Util;
 
 	/**
 	 * Constructor
@@ -141,7 +140,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			 */
 			$order = apply_filters( 'woocommerce_shipstation_export_get_order', wc_get_order( $order_id ) );
 
-			if ( ! self::is_wc_order( $order ) ) {
+			if ( ! Order_Util::is_wc_order( $order ) ) {
 				/* translators: 1: order id */
 				$this->log( sprintf( __( 'Order %s can not be found.', 'woocommerce-shipstation-integration' ), $order_id ) );
 				continue;
@@ -252,7 +251,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 
 			$this->xml_append( $order_xml, 'ShippingAmount', $shipping_total, false );
 			$this->xml_append( $order_xml, 'CustomerNotes', $order->get_customer_note() );
-			$this->xml_append( $order_xml, 'InternalNotes', implode( ' | ', $this->get_order_notes( $order ) ) );
+			$this->xml_append( $order_xml, 'InternalNotes', implode( ' | ', Order_Util::get_order_notes( $order ) ) );
 
 			// Maybe append the gift and gift message XML element.
 			if ( class_exists( 'WooCommerce\Shipping\ShipStation\Checkout' ) && $order->get_meta( Checkout::get_block_prefixed_meta_key( 'is_gift' ) ) ) {
@@ -312,7 +311,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$customer_xml->appendChild( $billto_xml );
 
 			$shipto_xml   = $xml->createElement( 'ShipTo' );
-			$address_data = $this->get_address_data( $order );
+			$address_data = Order_Util::get_address_data( $order );
 
 			$this->xml_append( $shipto_xml, 'Name', $address_data['name'] );
 			$this->xml_append( $shipto_xml, 'Company', $address_data['company'] );
@@ -496,57 +495,6 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 	}
 
 	/**
-	 * Get address data from Order.
-	 *
-	 * @param WC_Order $order Order object.
-	 *
-	 * @result array.
-	 */
-	public function get_address_data( $order ) {
-		$shipping_country = $order->get_shipping_country();
-		$shipping_address = $order->get_shipping_address_1();
-
-		$address = array();
-
-		if ( empty( $shipping_country ) && empty( $shipping_address ) ) {
-			$name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
-
-			$address['name']     = $name;
-			$address['company']  = $order->get_billing_company();
-			$address['address1'] = $order->get_billing_address_1();
-			$address['address2'] = $order->get_billing_address_2();
-			$address['city']     = $order->get_billing_city();
-			$address['state']    = $order->get_billing_state();
-			$address['postcode'] = $order->get_billing_postcode();
-			$address['country']  = $order->get_billing_country();
-			$address['phone']    = $order->get_billing_phone();
-		} else {
-			$name = $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name();
-
-			$address['name']     = $name;
-			$address['company']  = $order->get_shipping_company();
-			$address['address1'] = $order->get_shipping_address_1();
-			$address['address2'] = $order->get_shipping_address_2();
-			$address['city']     = $order->get_shipping_city();
-			$address['state']    = $order->get_shipping_state();
-			$address['postcode'] = $order->get_shipping_postcode();
-			$address['country']  = $order->get_shipping_country();
-			$address['phone']    = $order->get_billing_phone();
-		}
-
-		/**
-		 * Allow third party to modify the address data.
-		 *
-		 * @param array    $address Address data.
-		 * @param WC_Order $order Order object.
-		 * @param boolean  $is_export_address Flag to export address data or not.
-		 *
-		 * @since 4.2.0
-		 */
-		return apply_filters( 'woocommerce_shipstation_export_address_data', $address, $order, true );
-	}
-
-	/**
 	 * Get shipping method names
 	 *
 	 * @param WC_Order $order Order object.
@@ -564,34 +512,6 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		}
 
 		return $shipping_method_names;
-	}
-
-	/**
-	 * Get Order Notes
-	 *
-	 * @param  WC_Order $order Order object.
-	 * @return array
-	 */
-	private function get_order_notes( $order ) {
-		$args = array(
-			'post_id' => $order->get_id(),
-			'approve' => 'approve',
-			'type'    => 'order_note',
-		);
-
-		remove_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10 );
-		$notes = get_comments( $args );
-		add_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10, 1 );
-
-		$order_notes = array();
-
-		foreach ( $notes as $note ) {
-			if ( 'WooCommerce' !== $note->comment_author ) {
-				$order_notes[] = $note->comment_content;
-			}
-		}
-
-		return $order_notes;
 	}
 
 	/**

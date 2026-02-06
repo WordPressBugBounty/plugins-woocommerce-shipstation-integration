@@ -12,6 +12,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use WooCommerce\Shipping\ShipStation\API\REST\Inventory_Controller;
+use WooCommerce\Shipping\ShipStation\API\REST\Orders_Controller;
+use WooCommerce\Shipping\ShipStation\API\REST\Diagnostics_Controller;
 
 /**
  * Class REST_API_Loader
@@ -23,8 +25,17 @@ class REST_API_Loader {
 	 * Initialize the REST API routes.
 	 */
 	public function init() {
+		// Include Base REST API class file.
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/api/rest/class-api-controller.php';
+
 		// Include Inventory REST API class file.
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/api/rest/class-inventory-controller.php';
+
+		// Include Orders REST API class file.
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/api/rest/class-orders-controller.php';
+
+		// Include Orders REST API class file.
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/api/rest/class-diagnostics-controller.php';
 
 		// Register the REST API routes.
 		add_action( 'rest_api_init', array( $this, 'register_routes' ) );
@@ -37,6 +48,12 @@ class REST_API_Loader {
 	public function register_routes() {
 		$inventory_controller = new Inventory_Controller();
 		$inventory_controller->register_routes();
+
+		$orders_controller = new Orders_Controller();
+		$orders_controller->register_routes();
+
+		$diagnostics_controller = new Diagnostics_Controller();
+		$diagnostics_controller->register_routes();
 	}
 
 	/**
@@ -47,7 +64,9 @@ class REST_API_Loader {
 	 * @return array Updated list of REST API controllers with added ShipStation namespaces.
 	 */
 	public function register_shipstation_namespaces( array $controllers ): array {
-		$controllers['wc-shipstation/v1']['inventory'] = 'WooCommerce\Shipping\ShipStation\API\REST\Inventory_Controller';
+		$controllers['wc-shipstation/v1']['inventory']   = 'WooCommerce\Shipping\ShipStation\API\REST\Inventory_Controller';
+		$controllers['wc-shipstation/v1']['orders']      = 'WooCommerce\Shipping\ShipStation\API\REST\Orders_Controller';
+		$controllers['wc-shipstation/v1']['diagnostics'] = 'WooCommerce\Shipping\ShipStation\API\REST\Diagnostics_Controller';
 
 		return $controllers;
 	}

@@ -1,49 +1,44 @@
 === ShipStation for WooCommerce ===
 Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, dwainm, laurendavissmith001, Kloon
 Tags: shipping, woocommerce, automattic
-Requires at least: 6.7
-Tested up to: 6.8
-WC tested up to: 10.2
-WC requires at least: 10.0
+Requires at least: 6.8
+Tested up to: 6.9
+WC tested up to: 10.5
+WC requires at least: 10.3
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.7.8
+Stable tag: 4.9.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Ship your WooCommerce orders with confidence, save on top carriers, and automate your processes with ShipStation.
+Power your entire shipping operation from one platform.
 
 == Description ==
 
-Ship your WooCommerce orders with confidence, save on top carriers, and automate your processes with ShipStation.
+Power your entire shipping operation from one platform.
 
-https://www.youtube.com/watch?v=p7603LVyp9M&t=100s
+https://www.youtube.com/watch?v=V50bZh_o3uo
 
-= Features =
-- __Save money;__ get up to 84% off with top carriers, including UPS, USPS, and DHL Express.
-- __Save time;__ sync orders from all your sales channels in one place, and use automation to speed up your processes.
-- __Delight customers;__ deliver an exceptional experience with tracking, custom emails and SMS, plus a branded returns portal.
-- __Expand across borders;__ automatically generate customs forms, verify addresses, and get low rates on international shipments.
+= The smarter way to ship, every time =
+Our comprehensive shipping platform connects directly to your Woo store, consolidating all your orders into a single, intuitive dashboard. From there, you can process orders, generate shipping labels from a wide range of carriers, and automatically update tracking information back to your customers. With a centralized view of your entire shipping workflow, you can easily manage fulfillment, returns, and inventory across multiple channels. This integration simplifies complex logistics and provides the visibility you need to make informed decisions and scale your operations with confidence.
 
-= Get started =
-This extension requires a ShipStation monthly plan — [sign up for a free 30-day trial](https://www.shipstation.com/partners/woocommerce/?ref=partner-woocommerce&utm_campaign=partner-referrals&utm_source=woocommerce&utm_medium=partner).
+Available in local languages for the United States, Canada, United Kingdom, Australia, New Zealand, France, and Germany. [Try it for free for 30 days!](https://www.shipstation.com/?ref=partner-woocommerce&utm_campaign=partner-referrals&utm_source=woocommerce&utm_medium=partner).
 
-= Save money =
-Save __up to 84%__ with UPS, USPS, and DHL Express. You'll also get seriously discounted rates from leading carriers in the US, Canada, UK, Australia, New Zealand, France, and Germany.
+= Why use ShipStation =
+- __Automatically import orders__ from your Woo store and other sales channels to a single platform.
+- __Access a wide network of shipping carriers__ to generate labels, compare rates, and track packages.
+- __Create custom rules__ to automatically apply shipping preferences, allocate orders, and streamline repetitive tasks.
+- __Generate hundreds of labels__ at once and manage fulfillment in batches to maximize productivity.
+- __Simplify the returns process__ by generating return labels and managing shipments from a single dashboard.
 
-= Save time =
-Connect your store in seconds, automate workflows, sync tracking info, and get products to your customers __fast__. Sync orders from all your sales channels (including Amazon, Walmart, eBay, and Etsy) in one place.
-
-Get back hours of your time by automating, tagging, splitting, and batching orders and labels. Score!
-
-= Delight your customers =
-Deliver an exceptional experience __every time__ with customizable emails, SMS, and branded tracking info to keep customers updated. Returns? No problem, thanks to your own branded returns portal — now that's seamless.
-
-= Expand your business across borders =
-Global fulfillment just became effortless. With ShipStation, you can automatically generate and send __customs declarations__ and __verify overseas addresses__ in no time. Shipping to Canada from the US? International parcels are fast and affordable, with low, flat rate Canada Delivered Duty Paid (DDP).
-
-= Why ShipStation? =
-ShipStation powers global shipping success for businesses of all sizes. It streamlines the online fulfillment process — from order import and batch label creation to customer communication — with advanced customization features.
+= Get started in minutes =
+1. Sign up for a [no-risk, free ShipStation trial](https://www.shipstation.com/?ref=partner-woocommerce&utm_campaign=partner-referrals&utm_source=woocommerce&utm_medium=partner).
+2. Install the extension and connect your store.
+3. Immediately enable discounted carrier rates or connect your own accounts.
+4. Sync orders from WooCommerce and other channels and automate your order management.
+5. Batch-print labels.
+6. Update your customers with customized, branded emails and tracking.
+7. Delight your customers, and rinse and repeat when they buy again!
 
 == Frequently Asked Questions ==
 
@@ -54,7 +49,7 @@ You’ve come to the right place. [Our documentation](https://woocommerce.com/do
 To start, [review our troubleshooting tips](https://woocommerce.com/document/shipstation-for-woocommerce/#troubleshooting) for answers to common questions. Then, if you need further assistance, get in touch via the [official support forum](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
 = Do I need a ShipStation account? =
-Yes; [sign up for a free 30-day trial](https://www.shipstation.com/partners/woocommerce/?ref=partner-woocommerce&utm_campaign=partner-referrals&utm_source=woocommerce&utm_medium=partner).
+Yes; [sign up for a free 30-day trial](https://www.shipstation.com/?ref=partner-woocommerce&utm_campaign=partner-referrals&utm_source=woocommerce&utm_medium=partner).
 
 = Does this extension provide real-time shipping quotes at checkout? =
 No. Merchants will need a _real-time shipping quote extension_ (such as USPS, FedEx, UPS, etc.) or an alternate method (e.g. [flat rate charges](https://woocommerce.com/document/flat-rate-shipping/).
@@ -68,7 +63,34 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 = My question is not listed; where can I find more answers? =
 [Review our general FAQ](https://woocommerce.com/document/shipstation-for-woocommerce/#frequently-asked-questions) or [contact support](https://wordpress.org/support/plugin/woocommerce-shipstation-integration/).
 
+== Screenshots ==
+
+1. Streamline not just labels, but your entire e-commerce logistics operation.
+2. Delight customers with branded returns, easy tracking, and more.
+3. Compare rates and save up to 90% off on top carriers.
+4. Eliminate manual work, automate tasks, and ship more orders, faster.
+5. Power complex international shipments with confidence.
+6. Manage every order from one dashboard, with a single login.
+
 == Changelog ==
+
+= 4.9.1 - 2026-02-03 =
+* Tweak - WooCommerce 10.5 Compatibility.
+
+= 4.9.0 - 2026-01-12 =
+* Add   - REST API endpoints to export and import order data.
+
+= 4.8.3 - 2025-12-10 =
+* Tweak - WordPress 6.9 and WooCommerce 10.4 Compatibility.
+
+= 4.8.2 - 2025-11-17 =
+* Fix   - Authentication Data modal could fail to load on some environments.
+
+= 4.8.1 - 2025-10-15 =
+* Tweak - WooCommerce 10.3 compatibility.
+
+= 4.8.0 - 2025-10-07 =
+* Add   - Enhanced ShipStation authentication interface for a smoother user experience.
 
 = 4.7.8 - 2025-09-16 =
 * Fix   - Error when processing renewal via WooCommerce Subscription.

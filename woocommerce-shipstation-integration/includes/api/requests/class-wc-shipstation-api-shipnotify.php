@@ -9,6 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
+use WooCommerce\Shipping\ShipStation\Order_Util;
+
 /**
  * WC_Shipstation_API_Shipnotify Class
  */
@@ -24,87 +26,12 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 	}
 
 	/**
-	 * See how many items in the order need shipping.
-	 *
-	 * @param WC_Order $order Order object.
-	 *
-	 * @return int
-	 */
-	private function order_items_to_ship_count( $order ) {
-		$needs_shipping = 0;
-
-		foreach ( $order->get_items() as $item_id => $item ) {
-
-			$product = is_callable( array( $item, 'get_product' ) ) ? $item->get_product() : false;
-
-			if ( ( $product instanceof WC_Product ) && $product->needs_shipping() ) {
-				$needs_shipping += ( $item['qty'] - abs( $order->get_qty_refunded_for_item( $item_id ) ) );
-			}
-		}
-
-		return $needs_shipping;
-	}
-
-	/**
-	 * Check whether a given item ID is shippable item.
-	 *
-	 * @since 4.1.16
-	 * @version 4.1.16
-	 *
-	 * @param WC_Order $order   Order object.
-	 * @param int      $item_id Item ID.
-	 *
-	 * @return bool Returns true if item is shippable product.
-	 */
-	private function is_shippable_item( $order, $item_id ) {
-		$item    = $order->get_item( $item_id );
-		$product = is_callable( array( $item, 'get_product' ) ) ? $item->get_product() : false;
-
-		return $product ? $product->needs_shipping() : false;
-	}
-
-	/**
 	 * Get the order ID from the order number.
 	 *
 	 * @param string $order_number Order number.
 	 * @return integer
 	 */
 	private function get_order_id( $order_number ) {
-		// Try to match an order number in brackets.
-		preg_match( '/\((.*?)\)/', $order_number, $matches );
-		if ( is_array( $matches ) && isset( $matches[1] ) ) {
-			$order_id = $matches[1];
-
-		} elseif ( function_exists( 'wc_sequential_order_numbers' ) ) {
-			// Try to convert number for Sequential Order Number.
-			$order_id = wc_sequential_order_numbers()->find_order_by_order_number( $order_number );
-
-		} elseif ( function_exists( 'wc_seq_order_number_pro' ) ) {
-			// Try to convert number for Sequential Order Number Pro.
-			$order_id = wc_seq_order_number_pro()->find_order_by_order_number( $order_number );
-
-		} elseif ( function_exists( 'run_wt_advanced_order_number' ) ) {
-			// Try to convert order number for Sequential Order Number for WooCommerce by WebToffee.
-			// This plugin does not have any function or method that we can use to convert the number.
-			// So need to do it manually.
-			$orders = wc_get_orders(
-				array(
-					'wt_order_number' => $order_number,
-					'limit'           => 1,
-					'return'          => 'ids',
-				)
-			);
-
-			$order_id = ( is_array( $orders ) && ! empty( $orders ) ) ? array_shift( $orders ) : 0;
-		} else {
-			// Default to not converting order number.
-			$order_id = $order_number;
-		}
-
-		if ( 0 === $order_id ) {
-			$order_id = $order_number;
-		}
-
 		/**
 		 * This order number can be adjusted by using a filter which is done by the
 		 * Sequential Order Numbers / Sequential Order Numbers Pro plugins. However
@@ -120,7 +47,7 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		 *
 		 * @since 4.1.6
 		 */
-		return absint( apply_filters( 'woocommerce_shipstation_get_order_id', $order_id ) );
+		return absint( apply_filters( 'woocommerce_shipstation_get_order_id', Order_Util::get_order_id_from_order_number( (string) $order_number ) ) );
 	}
 
 	/**
@@ -255,8 +182,8 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 						$item_sku = ' (' . $item_sku . ')';
 					}
 
-					$item_id = wc_clean( (int) $item->LineItemID );
-					if ( ! $this->is_shippable_item( $order, $item_id ) ) {
+					$item_id = absint( $item->LineItemID );
+					if ( ! Order_Util::is_shippable_item( $order, $item_id ) ) {
 						/* translators: 1: item name */
 						$this->log( sprintf( __( 'Item %s is not shippable product. Skipping.', 'woocommerce-shipstation-integration' ), $item_name ) );
 						continue;
@@ -269,7 +196,7 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		}
 
 		// Number of items in WC order.
-		$total_item_count = $this->order_items_to_ship_count( $order );
+		$total_item_count = Order_Util::order_items_to_ship_count( $order );
 
 		// If we have a list of shipped items, we can customise the note + see
 		// if the order is not yet complete.

@@ -9,13 +9,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-use WooCommerce\ShipStation\Order_Util;
+use WooCommerce\Shipping\ShipStation\Order_Util;
+use Automattic\WooCommerce\Enums\OrderInternalStatus;
+use WooCommerce\Shipping\ShipStation\Logger;
+use WooCommerce\Shipping\ShipStation\Auth_Controller;
 
 /**
  * WC_ShipStation_Integration Class
  */
 class WC_ShipStation_Integration extends WC_Integration {
-	use Order_Util;
 
 	/**
 	 * Authorization key for ShipStation API.
@@ -54,6 +56,69 @@ class WC_ShipStation_Integration extends WC_Integration {
 	public static $gift_enabled = false;
 
 	/**
+	 * Status mapping.
+	 *
+	 * @var array
+	 */
+	public static $status_mapping = array();
+
+	/**
+	 * ShipStation status for awaiting payment.
+	 *
+	 * @var string
+	 */
+	public const AWAITING_PAYMENT_STATUS = 'AwaitingPayment';
+
+	/**
+	 * ShipStation status for awaiting shipment.
+	 *
+	 * @var string
+	 */
+	public const AWAITING_SHIPMENT_STATUS = 'AwaitingShipment';
+
+	/**
+	 * ShipStation status for on-hold.
+	 *
+	 * @var string
+	 */
+	public const ON_HOLD_STATUS = 'OnHold';
+
+	/**
+	 * ShipStation status for completed.
+	 *
+	 * @var string
+	 */
+	public const COMPLETED_STATUS = 'Completed';
+
+	/**
+	 * ShipStation status for Cancelled.
+	 *
+	 * @var string
+	 */
+	public const CANCELLED_STATUS = 'Cancelled';
+
+	/**
+	 * ShipStation status for Payment Cancelled.
+	 *
+	 * @var string
+	 */
+	public const PAYMENT_CANCELLED_STATUS = 'PaymentCancelled';
+
+	/**
+	 * ShipStation status for Payment Failed.
+	 *
+	 * @var string
+	 */
+	public const PAYMENT_FAILED_STATUS = 'PaymentFailed';
+
+	/**
+	 * ShipStation status for Paid.
+	 *
+	 * @var string
+	 */
+	public const PAID_STATUS = 'Paid';
+
+	/**
 	 * Order meta keys.
 	 *
 	 * @var array
@@ -62,6 +127,20 @@ class WC_ShipStation_Integration extends WC_Integration {
 		'is_gift'      => 'shipstation_is_gift',
 		'gift_message' => 'shipstation_gift_message',
 	);
+
+	/**
+	 * WooCommerce status prefix.
+	 *
+	 * @var string
+	 */
+	public static $wc_status_prefix = 'wc-';
+
+	/**
+	 * Stores logger class.
+	 *
+	 * @var WC_Logger
+	 */
+	private static $log = null;
 
 	/**
 	 * Constructor
@@ -75,6 +154,9 @@ class WC_ShipStation_Integration extends WC_Integration {
 			update_option( 'woocommerce_shipstation_auth_key', $this->generate_key() );
 		}
 
+		// Initialize auth display functionality.
+		$this->init_auth_display();
+
 		// Load admin form.
 		$this->init_form_fields();
 
@@ -82,10 +164,17 @@ class WC_ShipStation_Integration extends WC_Integration {
 		$this->init_settings();
 
 		self::$auth_key        = get_option( 'woocommerce_shipstation_auth_key', false );
-		self::$export_statuses = $this->get_option( 'export_statuses', array( 'wc-processing', 'wc-on-hold', 'wc-completed', 'wc-cancelled' ) );
+		self::$export_statuses = $this->get_option( 'export_statuses', array( OrderInternalStatus::PROCESSING, OrderInternalStatus::ON_HOLD, OrderInternalStatus::COMPLETED, OrderInternalStatus::CANCELLED ) );
 		self::$logging_enabled = 'yes' === $this->get_option( 'logging_enabled', 'yes' );
-		self::$shipped_status  = $this->get_option( 'shipped_status', 'wc-completed' );
+		self::$shipped_status  = $this->get_option( 'shipped_status', OrderInternalStatus::COMPLETED );
 		self::$gift_enabled    = 'yes' === $this->get_option( 'gift_enabled', 'no' );
+		self::$status_mapping  = array(
+			self::AWAITING_PAYMENT_STATUS  => $this->get_option( self::AWAITING_PAYMENT_STATUS . '_status' ),
+			self::AWAITING_SHIPMENT_STATUS => $this->get_option( self::AWAITING_SHIPMENT_STATUS . '_status' ),
+			self::ON_HOLD_STATUS           => $this->get_option( self::ON_HOLD_STATUS . '_status' ),
+			self::COMPLETED_STATUS         => $this->get_option( self::COMPLETED_STATUS . '_status' ),
+			self::CANCELLED_STATUS         => $this->get_option( self::CANCELLED_STATUS . '_status' ),
+		);
 
 		// Force saved .
 		$this->settings['auth_key'] = self::$auth_key;
@@ -95,9 +184,11 @@ class WC_ShipStation_Integration extends WC_Integration {
 		add_filter( 'woocommerce_subscriptions_renewal_order_meta_query', array( $this, 'subscriptions_renewal_order_meta_query' ), 10, 4 );
 		add_action( 'wp_loaded', array( $this, 'hide_notices' ) );
 		add_filter( 'woocommerce_translations_updates_for_woocommerce_shipstation_integration', '__return_true' );
+		add_action( 'woocommerce_shipstation_get_orders_before_process_request', array( $this, 'maybe_update_api_mode' ), 10, 1 );
+		add_action( 'woocommerce_shipstation_get_orders_before_process_request', array( $this, 'maybe_save_status_mapping' ), 15, 1 );
 
 		$hide_notice               = get_option( 'wc_shipstation_hide_activate_notice', '' );
-		$settings_notice_dismissed = get_user_meta( get_current_user_id(), 'dismissed_shipstation-setup_notice' );
+		$settings_notice_dismissed = get_user_meta( get_current_user_id(), 'dismissed_shipstation-setup_notice', true );
 
 		// phpcs:ignore WordPress.WP.Capabilities.Unknown --- It's native capability from WooCommerce
 		if ( current_user_can( 'manage_woocommerce' ) && ( 'yes' !== $hide_notice && ! $settings_notice_dismissed ) ) {
@@ -107,8 +198,40 @@ class WC_ShipStation_Integration extends WC_Integration {
 			}
 		}
 
-		add_filter( 'woocommerce_order_query_args', array( $this, 'add_order_number_query_vars_for_hpos' ), 10, 1 );
-		add_filter( 'woocommerce_order_data_store_cpt_get_orders_query', array( $this, 'add_order_number_query_vars_for_cpt' ), 10, 2 );
+		add_filter( 'woocommerce_order_query_args', array( $this, 'add_custom_query_vars_for_hpos' ), 10, 1 );
+		add_filter( 'woocommerce_order_data_store_cpt_get_orders_query', array( $this, 'add_custom_query_vars_for_cpt' ), 10, 2 );
+		add_filter( 'woocommerce_shipstation_diagnostics_controller_get_details', array( $this, 'add_more_diagnostics_details' ), 10 );
+	}
+
+	/**
+	 * Refresh status mapping after being updated.
+	 */
+	public function refresh_status_mapping() {
+		self::$status_mapping = array(
+			self::AWAITING_PAYMENT_STATUS  => $this->get_option( self::AWAITING_PAYMENT_STATUS . '_status' ),
+			self::AWAITING_SHIPMENT_STATUS => $this->get_option( self::AWAITING_SHIPMENT_STATUS . '_status' ),
+			self::ON_HOLD_STATUS           => $this->get_option( self::ON_HOLD_STATUS . '_status' ),
+			self::COMPLETED_STATUS         => $this->get_option( self::COMPLETED_STATUS . '_status' ),
+			self::CANCELLED_STATUS         => $this->get_option( self::CANCELLED_STATUS . '_status' ),
+		);
+	}
+
+	/**
+	 * Get REST API setting fields.
+	 * These fields will be available only if the REST API is being used instead of XML API.
+	 *
+	 * @return array
+	 */
+	public function get_rest_api_setting_fields() {
+		return array(
+			'api_mode',
+			'status_mode',
+			self::AWAITING_PAYMENT_STATUS . '_status',
+			self::AWAITING_SHIPMENT_STATUS . '_status',
+			self::ON_HOLD_STATUS . '_status',
+			self::COMPLETED_STATUS . '_status',
+			self::CANCELLED_STATUS . '_status',
+		);
 	}
 
 	/**
@@ -121,14 +244,145 @@ class WC_ShipStation_Integration extends WC_Integration {
 	}
 
 	/**
+	 * Initialize the authentication display functionality.
+	 */
+	private function init_auth_display() {
+		if ( is_admin() && class_exists( 'WooCommerce\Shipping\ShipStation\Auth_Controller' ) ) {
+			new Auth_Controller();
+		}
+	}
+
+	/**
+	 * Update the status mode and the status mapping fields if the plugin is a fresh installed.
+	 *
+	 * @param array $request_params Request parameters.
+	 */
+	public function maybe_update_status_mode( $request_params ) {
+		// Need to separate the condition for optimization as `check_shipstation_has_exported_orders()` has more complex database calling.
+		if ( ! empty( $this->get_option( 'status_mode', '' ) ) ) {
+			return;
+		}
+
+		if ( $this->check_shipstation_has_exported_orders() && ! empty( $request_params['status_mapping'] ) ) {
+			return;
+		}
+
+		$log_info = array();
+		$this->update_option( 'status_mode', 'plugin' );
+		$log_info['status_mode'] = 'plugin';
+
+		$shipstation_statuses = array_keys( self::$status_mapping );
+
+		foreach ( $shipstation_statuses as $status ) {
+			$this->update_option( $status . '_status', $this->form_fields[ $status . '_status' ]['default'] );
+			$log_info[ $status . '_status' ] = $this->form_fields[ $status . '_status' ]['default'];
+		}
+
+		$this->refresh_status_mapping();
+
+		Logger::debug( 'Mapping the status for fresh install', $log_info );
+	}
+
+	/**
+	 * Check if the plugin has been used to export the orders.
+	 *
+	 * @return bool
+	 */
+	public function check_shipstation_has_exported_orders() {
+		$orders = wc_get_orders(
+			array(
+				'shipstation_exported' => 1,
+				'limit'                => 1,
+				'orderby'              => 'modified',
+				'order'                => 'DESC',
+				'return'               => 'ids',
+			)
+		);
+
+		return ( ! empty( $orders ) && is_array( $orders ) );
+	}
+
+	/**
+	 * Update API Mode.
+	 *
+	 * @param array $request_params Request parameters.
+	 */
+	public function maybe_update_api_mode( $request_params ) {
+		$api_mode = $this->get_option( 'api_mode', '' );
+
+		if ( 'REST' === $api_mode ) {
+			return;
+		}
+
+		$this->update_option( 'api_mode', 'REST' );
+		$this->init_form_fields();
+		$this->maybe_update_status_mode( $request_params );
+	}
+
+	/**
+	 * Save status mapping.
+	 *
+	 * @param array $request_params Request parameter.
+	 */
+	public function maybe_save_status_mapping( $request_params ) {
+		if ( empty( $request_params['status_mapping'] ) ) {
+			return;
+		}
+
+		$mapping_mode = $this->get_option( 'status_mode', '' );
+
+		if ( 'plugin' === $mapping_mode ) {
+			return;
+		}
+
+		$log_info       = array();
+		$status_mapping = is_array( $request_params['status_mapping'] ) ? $request_params['status_mapping'] : array( $request_params['status_mapping'] );
+
+		foreach ( $status_mapping as $status_parameter ) {
+			$statuses = explode( ':', $status_parameter );
+
+			if ( 2 !== count( $statuses ) ) {
+				continue;
+			}
+
+			$wc_statuses = explode( ',', strtolower( $statuses[0] ) );
+			$ss_status   = $statuses[1];
+
+			if ( ! isset( $this->form_fields[ $ss_status . '_status' ] ) ) {
+				continue;
+			}
+
+			$wc_statuses = array_map(
+				function ( $status ) {
+					return self::$wc_status_prefix . $status;
+				},
+				$wc_statuses
+			);
+
+			$this->update_option( $ss_status . '_status', $wc_statuses );
+			$log_info[ $ss_status . '_status' ] = $wc_statuses;
+		}
+
+		// Update the status mode only if the status_mode still empty.
+		if ( empty( $mapping_mode ) ) {
+			$this->update_option( 'status_mode', 'plugin' );
+			$log_info['status_mode'] = 'plugin';
+		}
+
+		$this->refresh_status_mapping();
+
+		Logger::debug( 'Status has been mapped', $log_info );
+	}
+
+	/**
 	 * Handle a custom variable query var to get orders with the 'order_number' meta for HPOS.
 	 *
 	 * @param array $query_vars - Query vars from WC_Order_Query.
 	 *
 	 * @return array modified $query_vars
 	 */
-	public function add_order_number_query_vars_for_hpos( $query_vars ) {
-		if ( ! self::custom_orders_table_usage_is_enabled() ) {
+	public function add_custom_query_vars_for_hpos( $query_vars ) {
+		if ( ! Order_Util::custom_orders_table_usage_is_enabled() ) {
 			return $query_vars;
 		}
 
@@ -136,6 +390,13 @@ class WC_ShipStation_Integration extends WC_Integration {
 			$query_vars['meta_query'][] = array(
 				'key'   => '_order_number',
 				'value' => esc_attr( $query_vars['wt_order_number'] ),
+			);
+		}
+
+		if ( ! empty( $query_vars['shipstation_exported'] ) ) {
+			$query_vars['meta_query'][] = array(
+				'key'     => '_shipstation_exported',
+				'compare' => 'EXISTS',
 			);
 		}
 
@@ -150,7 +411,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 *
 	 * @return array modified $query.
 	 */
-	public function add_order_number_query_vars_for_cpt( $query, $query_vars ) {
+	public function add_custom_query_vars_for_cpt( $query, $query_vars ) {
 		if ( ! empty( $query_vars['wt_order_number'] ) ) {
 			$query['meta_query'][] = array(
 				'key'   => '_order_number',
@@ -158,7 +419,28 @@ class WC_ShipStation_Integration extends WC_Integration {
 			);
 		}
 
+		if ( ! empty( $query_vars['shipstation_exported'] ) ) {
+			$query['meta_query'][] = array(
+				'key'     => '_shipstation_exported',
+				'compare' => 'EXISTS',
+			);
+		}
+
 		return $query;
+	}
+
+	/**
+	 * Add more information into diagnostic API results.
+	 *
+	 * @param array $site_info Site informations.
+	 *
+	 * @return array
+	 */
+	public function add_more_diagnostics_details( $site_info ) {
+		$site_info['source_details']['status_mapping']      = self::$status_mapping;
+		$site_info['source_details']['status_mapping_mode'] = $this->get_option( 'status_mode', 'api' );
+
+		return $site_info;
 	}
 
 	/**
@@ -183,7 +465,17 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 */
 	public function init_form_fields() {
 		$this->form_fields = include WC_SHIPSTATION_ABSPATH . 'includes/data/data-settings.php';
+		$api_mode          = $this->get_option( 'api_mode', 'XML' );
 
+		if ( 'REST' !== $api_mode ) {
+			$rest_api_fields = $this->get_rest_api_setting_fields();
+
+			foreach ( $rest_api_fields as $field ) {
+				if ( isset( $this->form_fields[ $field ] ) ) {
+					unset( $this->form_fields[ $field ] );
+				}
+			}
+		}
 		// If Checkout class does not exist, disable the gift option.
 		if ( ! class_exists( 'WooCommerce\Shipping\ShipStation\Checkout' ) ) {
 			$this->form_fields['gift_enabled']['custom_attributes'] = array( 'disabled' => 'disabled' );
@@ -270,17 +562,17 @@ class WC_ShipStation_Integration extends WC_Integration {
 			</p>
 			<p>
 				<?php
-					echo wp_kses(
-						sprintf(
-							/* translators: %s: ShipStation Auth Key */
-							__( 'After logging in, add a selling channel for WooCommerce and use your Auth Key (<code>%s</code>) to connect your store.', 'woocommerce-shipstation-integration' ),
-							self::$auth_key
-						),
-						array( 'code' => array() )
-					);
+				esc_html_e( 'After logging in, add WooCommerce as a selling channel in ShipStation. Use your store\'s Auth Key and REST API credentials to connect. Once connected you\'re good to go!', 'woocommerce-shipstation-integration' );
 				?>
 			</p>
-			<p><?php esc_html_e( "Once connected you're good to go!", 'woocommerce-shipstation-integration' ); ?></p>
+			<p>
+				<?php
+				if ( class_exists( 'WooCommerce\Shipping\ShipStation\Auth_Controller' ) ) :
+                    // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+					echo Auth_Controller::get_auth_button_html();
+				endif;
+				?>
+			</p>
 			<hr>
 			<p>
 				<?php
@@ -303,4 +595,3 @@ class WC_ShipStation_Integration extends WC_Integration {
 		<?php
 	}
 }
-

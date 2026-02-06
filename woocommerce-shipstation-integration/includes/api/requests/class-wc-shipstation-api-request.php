@@ -9,6 +9,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
+use WooCommerce\Shipping\ShipStation\Logger;
+
 /**
  * WC_Shipstation_API_Request Class
  */
@@ -27,13 +29,7 @@ abstract class WC_Shipstation_API_Request {
 	 * @param string $message Log message.
 	 */
 	public function log( $message ) {
-		if ( ! WC_ShipStation_Integration::$logging_enabled ) {
-			return;
-		}
-		if ( is_null( $this->log ) ) {
-			$this->log = new WC_Logger();
-		}
-		$this->log->add( 'shipstation', $message );
+		Logger::debug( (string) $message );
 	}
 
 	/**

@@ -104,5 +104,3 @@ class WC_Shipstation_API extends WC_Shipstation_API_Request {
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 	}
 }
-
-new WC_Shipstation_API();

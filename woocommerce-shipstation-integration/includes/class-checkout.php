@@ -234,7 +234,7 @@ class Checkout {
 				);
 			} catch ( Exception $e ) {
 				// Log error silently.
-				wc_get_logger()->error( $e->getMessage(), array( 'source' => 'woocommerce-shipstation' ) );
+				Logger::error( $e->getMessage() );
 			}
 		}
 	}
@@ -289,9 +289,8 @@ class Checkout {
 				);
 			}
 		} catch ( Exception $e ) {
-			wc_get_logger()->error(
-				sprintf( 'Error deregistering gift fields: %s', $e->getMessage() ),
-				array( 'source' => 'woocommerce-shipstation' )
+			Logger::error(
+				sprintf( 'Error deregistering gift fields: %s', $e->getMessage() )
 			);
 		}
 	}

@@ -20,7 +20,7 @@ use WP_REST_Server;
 /**
  * Inventory_Controller class.
  */
-class Inventory_Controller {
+class Inventory_Controller extends API_Controller {
 
 	/**
 	 * Namespace for the REST API
@@ -51,7 +51,7 @@ class Inventory_Controller {
 				'permission_callback' => array( $this, 'check_get_permission' ),
 				'args'                => array(
 					'page'     => array(
-						'description'       => __( 'Current page of the collection.', 'woocommerce-shipstation-integration' ),
+						'description'       => __( 'Page number of the results to return.', 'woocommerce-shipstation-integration' ),
 						'type'              => 'integer',
 						'default'           => 1,
 						'sanitize_callback' => function ( $value ) {
@@ -62,7 +62,7 @@ class Inventory_Controller {
 						},
 					),
 					'per_page' => array(
-						'description'       => __( 'Maximum number of items to be returned in result set.', 'woocommerce-shipstation-integration' ),
+						'description'       => __( 'Maximum number of items to return per page (1–500).', 'woocommerce-shipstation-integration' ),
 						'type'              => 'integer',
 						'default'           => 100,
 						'sanitize_callback' => function ( $value ) {

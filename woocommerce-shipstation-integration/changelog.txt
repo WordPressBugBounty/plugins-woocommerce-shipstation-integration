@@ -1,5 +1,23 @@
 *** ShipStation for WooCommerce ***
 
+= 4.9.1 - 2026-02-03 =
+* Tweak - WooCommerce 10.5 Compatibility.
+
+= 4.9.0 - 2026-01-12 =
+* Add   - REST API endpoints to export and import order data.
+
+= 4.8.3 - 2025-12-10 =
+* Tweak - WordPress 6.9 and WooCommerce 10.4 Compatibility.
+
+= 4.8.2 - 2025-11-17 =
+* Fix   - Authentication Data modal could fail to load on some environments.
+
+= 4.8.1 - 2025-10-15 =
+* Tweak - WooCommerce 10.3 compatibility.
+
+= 4.8.0 - 2025-10-07 =
+* Add   - Enhanced ShipStation authentication interface for a smoother user experience.
+
 = 4.7.8 - 2025-09-16 =
 * Fix   - Error when processing renewal via WooCommerce Subscription.
 
