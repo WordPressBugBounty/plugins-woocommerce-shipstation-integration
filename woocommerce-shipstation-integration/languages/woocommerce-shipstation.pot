@@ -2,10 +2,10 @@
 # This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: ShipStation for WooCommerce 4.9.1\n"
+"Project-Id-Version: ShipStation for WooCommerce 4.9.2\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/woocommerce-shipstation\n"
-"POT-Creation-Date: 2026-02-03 17:36:49+00:00\n"
+"POT-Creation-Date: 2026-02-16 16:08:10+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -14,23 +14,27 @@ msgstr ""
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "X-Generator: node-wp-i18n 1.2.7\n"
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:145
+#: includes/api/requests/class-wc-shipstation-api-export.php:113
+msgid "Invalid start_date or end_date format."
+msgstr ""
+
+#: includes/api/requests/class-wc-shipstation-api-export.php:173
 #: includes/api/rest/class-orders-controller.php:429
 #. translators: 1: order id
 msgid "Order %s can not be found."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:452
+#: includes/api/requests/class-wc-shipstation-api-export.php:480
 #: includes/api/rest/class-orders-controller.php:803
 msgid "Total Discount"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:481
+#: includes/api/requests/class-wc-shipstation-api-export.php:509
 #: includes/api/rest/class-orders-controller.php:437
 msgid "Order has been exported to Shipstation"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:493
+#: includes/api/requests/class-wc-shipstation-api-export.php:521
 #. translators: 1: total count
 msgid "Exported %s orders"
 msgstr ""

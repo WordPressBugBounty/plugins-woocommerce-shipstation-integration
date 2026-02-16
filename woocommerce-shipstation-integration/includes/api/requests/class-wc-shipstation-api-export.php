@@ -47,6 +47,45 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 	}
 
 	/**
+	 * Parse a date string from ShipStation (in PST/PDT timezone) to a UTC timestamp.
+	 *
+	 * @see https://www.shipstation.com/docs/api/requirements/ - "The time zone represented in all responses is PST/PDT".
+	 *
+	 * @param string $date_string Date string from ShipStation in PST/PDT.
+	 * @return int|false Unix timestamp (UTC), or false on failure.
+	 */
+	private function parse_shipstation_date_to_utc( $date_string ) {
+		if ( empty( $date_string ) ) {
+			return false;
+		}
+
+		// Handle ShipStation's compact format (MMDDYYYYxHHMM).
+		if ( false === strtotime( $date_string ) ) {
+			$month       = substr( $date_string, 0, 2 );
+			$day         = substr( $date_string, 2, 2 );
+			$year        = substr( $date_string, 4, 4 );
+			$time        = substr( $date_string, 9, 4 );
+			$date_string = sprintf(
+				'%s-%s-%s %s:%s:00',
+				$year,
+				$month,
+				$day,
+				substr( $time, 0, 2 ),
+				substr( $time, 2, 2 )
+			);
+		}
+
+		try {
+			// ShipStation uses PST/PDT (America/Los_Angeles) for all datetime values.
+			$pst_timezone = new \DateTimeZone( 'America/Los_Angeles' );
+			$date         = new \DateTime( $date_string, $pst_timezone );
+			return $date->getTimestamp();
+		} catch ( \Exception $e ) {
+			return false;
+		}
+	}
+
+	/**
 	 * Do the request
 	 */
 	public function request() {
@@ -65,30 +104,19 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		$raw_end_date      = isset( $_GET['end_date'] ) ? urldecode( wc_clean( wp_unslash( $_GET['end_date'] ) ) ) : false;
 		$store_weight_unit = get_option( 'woocommerce_weight_unit' );
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
-		// Parse start and end date.
-		if ( $raw_start_date && false === strtotime( $raw_start_date ) ) {
-			$month      = substr( $raw_start_date, 0, 2 );
-			$day        = substr( $raw_start_date, 2, 2 );
-			$year       = substr( $raw_start_date, 4, 4 );
-			$time       = substr( $raw_start_date, 9, 4 );
-			$start_date = gmdate( 'Y-m-d H:i:s', strtotime( $year . '-' . $month . '-' . $day . ' ' . $time ) );
-		} else {
-			$start_date = gmdate( 'Y-m-d H:i:s', strtotime( $raw_start_date ) );
-		}
 
-		if ( $raw_end_date && false === strtotime( $raw_end_date ) ) {
-			$month    = substr( $raw_end_date, 0, 2 );
-			$day      = substr( $raw_end_date, 2, 2 );
-			$year     = substr( $raw_end_date, 4, 4 );
-			$time     = substr( $raw_end_date, 9, 4 );
-			$end_date = gmdate( 'Y-m-d H:i:s', strtotime( $year . '-' . $month . '-' . $day . ' ' . $time ) );
-		} else {
-			$end_date = gmdate( 'Y-m-d H:i:s', strtotime( $raw_end_date ) );
+		// Parse dates from ShipStation (PST/PDT timezone) to UTC timestamps.
+		$start_timestamp = $this->parse_shipstation_date_to_utc( $raw_start_date );
+		$end_timestamp   = $this->parse_shipstation_date_to_utc( $raw_end_date );
+
+		if ( false === $start_timestamp || false === $end_timestamp ) {
+			$this->trigger_error( __( 'Invalid start_date or end_date format.', 'woocommerce-shipstation-integration' ) );
+			return;
 		}
 
 		$orders_to_export = wc_get_orders(
 			array(
-				'date_modified' => strtotime( $start_date ) . '...' . strtotime( $end_date ),
+				'date_modified' => $start_timestamp . '...' . $end_timestamp,
 				'type'          => 'shop_order',
 				'status'        => WC_ShipStation_Integration::$export_statuses,
 				'return'        => 'ids',
@@ -102,7 +130,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		$total_orders_to_export = wc_get_orders(
 			array(
 				'type'          => 'shop_order',
-				'date_modified' => strtotime( $start_date ) . '...' . strtotime( $end_date ),
+				'date_modified' => $start_timestamp . '...' . $end_timestamp,
 				'status'        => WC_ShipStation_Integration::$export_statuses,
 				'paginate'      => true,
 				'return'        => 'ids',

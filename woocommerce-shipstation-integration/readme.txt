@@ -7,7 +7,7 @@ WC tested up to: 10.5
 WC requires at least: 10.3
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.9.1
+Stable tag: 4.9.2
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 4.9.2 - 2026-02-16 =
+* Fix   - XML API date filtering incorrectly interpreted dates using server timezone instead of ShipStation's PST/PDT timezone.
 
 = 4.9.1 - 2026-02-03 =
 * Tweak - WooCommerce 10.5 Compatibility.

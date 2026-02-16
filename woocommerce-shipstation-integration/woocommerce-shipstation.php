@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ShipStation for WooCommerce
  * Plugin URI: https://woocommerce.com/products/shipstation-integration/
- * Version: 4.9.1
+ * Version: 4.9.2
  * Description: Power your entire shipping operation from one platform.
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
@@ -39,7 +39,7 @@ if ( ! defined( 'WC_SHIPSTATION_PLUGIN_URL' ) ) {
 	define( 'WC_SHIPSTATION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 }
 
-define( 'WC_SHIPSTATION_VERSION', '4.9.1' ); // WRCS: DEFINED_VERSION.
+define( 'WC_SHIPSTATION_VERSION', '4.9.2' ); // WRCS: DEFINED_VERSION.
 
 require_once WC_SHIPSTATION_ABSPATH . 'includes/class-main.php';
 

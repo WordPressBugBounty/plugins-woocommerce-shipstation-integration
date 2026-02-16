@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 4.9.2 - 2026-02-16 =
+* Fix   - XML API date filtering incorrectly interpreted dates using server timezone instead of ShipStation's PST/PDT timezone.
+
 = 4.9.1 - 2026-02-03 =
 * Tweak - WooCommerce 10.5 Compatibility.
 
