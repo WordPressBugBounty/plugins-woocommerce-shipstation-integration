@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
+use WC_DateTime;
 use WC_Order;
 use WC_Order_Item;
 use WC_Order_Item_Coupon;
@@ -60,7 +61,7 @@ class Orders_Controller extends API_Controller {
 	private float $exchange_rate = 1.00;
 
 	/**
-	 * Whether to export discounts as a separate line item.
+	 * Whether to export discounts as adjustment entries in the payment info.
 	 *
 	 * @var bool
 	 */
@@ -74,9 +75,8 @@ class Orders_Controller extends API_Controller {
 	 */
 	private function set_order_context( WC_Order $order ): void {
 		// Reset per-order context to defaults, in case it was previously set.
-		$this->currency_code                     = '';
-		$this->exchange_rate                     = 1.00;
-		$this->export_discounts_as_separate_item = true;
+		$this->currency_code = '';
+		$this->exchange_rate = 1.00;
 
 		/**
 		 * Currency code can be filtered by 3rd parties.
@@ -96,13 +96,27 @@ class Orders_Controller extends API_Controller {
 		 * @since 4.8.0
 		 */
 		$this->exchange_rate = (float) apply_filters( 'woocommerce_shipstation_export_exchange_rate', 1.00, $order );
+
 		/**
-		 * Discount export behavior can be filtered by 3rd parties.
+		 * Filter whether order discounts should be exported as adjustment entries to ShipStation.
 		 *
-		 * @param bool     $export_discounts_as_separate_item Whether to export discounts as a separate line item.
-		 * @param WC_Order $order                             Order object.
+		 * By default (true), discounts are exported as `Charge` objects within `payment.adjustments[]`
+		 * in the JSON Order Source API payload. Each coupon is added as its own individual adjustment
+		 * entry (e.g. "Discount from coupon: SAVE10"), and any non-coupon discounts (such as manual
+		 * admin discounts not tied to a coupon code) are added as an additional "Additional Discount"
+		 * entry. Coupon codes are also mapped to `payment.coupon_code` or `payment.coupon_codes`
+		 * depending on how many coupons are present.
 		 *
-		 * @since 4.8.0
+		 * This filter is provided to give developers flexibility in customizing how discounts
+		 * are represented in the ShipStation REST API export.
+		 *
+		 * @see   https://linear.app/a8c/issue/SHIPSTN-57/orders-api-discounts-added-as-line-items#comment-a192e532
+		 *
+		 * @param bool     $export_discounts_as_separate_item Whether to export discounts as `payment.adjustments[]`
+		 *                                                    Charge objects in the ShipStation REST API payload. Default true.
+		 * @param WC_Order $order                             The WooCommerce order object.
+		 *
+		 * @since 4.5.1
 		 */
 		$this->export_discounts_as_separate_item = (bool) apply_filters( 'woocommerce_shipstation_export_discounts_as_separate_item', true, $order );
 	}
@@ -122,7 +136,7 @@ class Orders_Controller extends API_Controller {
 	}
 
 	/**
-	 * Should export discounts as a separate line item.
+	 * Whether to export discounts as a separate adjustment item.
 	 */
 	private function should_export_discounts_as_separate_item(): bool {
 		return $this->export_discounts_as_separate_item;
@@ -456,8 +470,7 @@ class Orders_Controller extends API_Controller {
 		$this->set_order_context( $order );
 
 		$currency_code = $this->get_currency_code();
-
-		$paid_date = ! empty( $order->get_date_paid() ) ? $this->get_shipstation_date_format( $order->get_date_paid()->date( 'Y-m-d' ), $order->get_date_paid()->date( 'H:i:s' ) ) : '';
+		$paid_date     = $this->get_shipstation_date_format( $order->get_date_paid() );
 
 		$formatted_order_number   = ltrim( $order->get_order_number(), '#' );
 		$shipstation_order_status = $this->get_shipstation_status_from_order( $order->get_status() );
@@ -502,8 +515,8 @@ class Orders_Controller extends API_Controller {
 			),
 			'order_url'              => $order->get_checkout_order_received_url(),
 			'notes'                  => $this->get_notes( $order ),
-			'created_date_time'      => $this->get_shipstation_date_format( $order->get_date_created()->date( 'Y-m-d' ), $order->get_date_created()->date( 'H:i:s' ) ),
-			'modified_date_time'     => $this->get_shipstation_date_format( $order->get_date_modified()->date( 'Y-m-d' ), $order->get_date_modified()->date( 'H:i:s' ) ),
+			'created_date_time'      => $this->get_shipstation_date_format( $order->get_date_created() ),
+			'modified_date_time'     => $this->get_shipstation_date_format( $order->get_date_modified() ),
 		);
 
 		/**
@@ -576,19 +589,73 @@ class Orders_Controller extends API_Controller {
 			'payment_method'   => $order->get_payment_method(),
 		);
 
+		if ( $this->should_export_discounts_as_separate_item() ) {
+			$payment_info = $this->set_payment_adjustments( $payment_info, $order );
+		}
+
+		return $payment_info;
+	}
+
+	/**
+	 * Populates payment adjustment entries for order discounts in the ShipStation REST API payload.
+	 *
+	 * Coupon codes are also mapped to `payment.coupon_code` (single coupon) or
+	 * `payment.coupon_codes` (multiple coupons) in the payload.
+	 *
+	 * @param array    $payment_info The payment info array being built for the ShipStation API payload.
+	 * @param WC_Order $order        The order object.
+	 *
+	 * @return array The modified payment info array with adjustment entries populated.
+	 */
+	private function set_payment_adjustments( array $payment_info, WC_Order $order ): array {
+		$coupon_discount_total = 0.0;
+		$collected_codes       = array();
+		$rate                  = $this->get_exchange_rate();
+
 		if ( ! empty( $order->get_coupons() ) && is_array( $order->get_coupons() ) ) {
 			foreach ( $order->get_coupons() as $coupon ) {
 				if ( ! $coupon instanceof WC_Order_Item_Coupon ) {
 					continue;
 				}
 
-				$payment_info['coupon_codes'][] = $coupon->get_code();
-				$payment_info['adjustments'][]  = array(
+				$coupon_amount          = floatval( $coupon->get_discount() );
+				$coupon_discount_total += $coupon_amount;
+				$collected_codes[]      = $coupon->get_code();
+
+				// Maybe convert coupon amount using per-order exchange rate.
+				if ( 1.00 !== $rate ) {
+					$coupon_amount = floatval( $coupon_amount * $rate );
+				}
+
+				$payment_info['adjustments'][] = array(
 					// translators: %1$s is a coupon code.
 					'description' => sprintf( __( 'Discount from coupon: %1$s', 'woocommerce-shipstation-integration' ), $coupon->get_code() ),
-					'amount'      => $coupon->get_discount(),
+					'amount'      => NumberUtil::round( $coupon_amount, wc_get_price_decimals() ),
 				);
 			}
+		}
+
+		if ( 1 === count( $collected_codes ) ) {
+			$payment_info['coupon_code'] = $collected_codes[0];
+		} elseif ( count( $collected_codes ) > 1 ) {
+			$payment_info['coupon_codes'] = $collected_codes;
+		}
+
+		// Handle non-coupon discounts (e.g. manual admin discounts not tied to a coupon code).
+		$non_coupon_discount = NumberUtil::round(
+			floatval( $order->get_total_discount() ) - $coupon_discount_total,
+			wc_get_price_decimals()
+		);
+
+		if ( $non_coupon_discount > 0 ) {
+			if ( 1.00 !== $rate ) {
+				$non_coupon_discount = floatval( $non_coupon_discount * $rate );
+			}
+
+			$payment_info['adjustments'][] = array(
+				'description' => __( 'Additional Discount', 'woocommerce-shipstation-integration' ),
+				'amount'      => $non_coupon_discount,
+			);
 		}
 
 		return $payment_info;
@@ -686,20 +753,20 @@ class Orders_Controller extends API_Controller {
 	}
 
 	/**
-	 * Get the date format expected by ShipStation.
+	 * Format a WC_DateTime as a ShipStation-compatible ISO 8601 UTC string.
 	 *
-	 * @param string $date The date in 'Y-m-d' format.
-	 * @param string $time The time in 'H:i:s' format.
+	 * @param WC_DateTime|null $date The date object to format.
 	 *
-	 * @return string
+	 * @return string ISO 8601 UTC string (e.g., '2025-01-15T14:30:00.000Z'), or empty string if null.
 	 */
-	public function get_shipstation_date_format( string $date, string $time ): string {
-		if ( ! $date || ! $time ) {
+	public function get_shipstation_date_format( ?WC_DateTime $date ): string {
+		if ( is_null( $date ) ) {
 			return '';
 		}
 
-		// Format the date and time to match ShipStation's expected format.
-		return sprintf( '%1$sT%2$s.000Z', $date, $time );
+		$utc_date = clone $date;
+		$utc_date->setTimezone( new \DateTimeZone( 'UTC' ) );
+		return $utc_date->format( 'Y-m-d\TH:i:s' ) . '.000Z';
 	}
 
 	/**
@@ -728,9 +795,6 @@ class Orders_Controller extends API_Controller {
 		if ( empty( $fulfillment_items ) ) {
 			return $fulfillments;
 		}
-
-		// Append cart level discount line.
-		$fulfillment_items = $this->maybe_append_discount_line( $fulfillment_items, $order, $extra_args );
 
 		$fulfillments[] = $this->get_fulfillment( $fulfillment_items, $order );
 
@@ -767,45 +831,10 @@ class Orders_Controller extends API_Controller {
 			'items'                    => $fulfillment_items,
 			'extensions'               => $this->get_custom_fields( $order ),
 			'shipping_preferences'     => array(
-				'gift' => $gift['is_gift'],
+				'gift'             => $gift['is_gift'],
+				'shipping_service' => Order_Util::get_shipping_methods( $order, false ),
 			),
 		);
-	}
-
-	/**
-	 * Append a cart-level discount line to the fulfillment items when enabled.
-	 *
-	 * @param array      $items      Current items array.
-	 * @param WC_Order   $order      Order object.
-	 * @param array      $extra_args Extra args including exchange_rate and export_discounts_as_separate_item.
-	 * @param float|null $amount     Optional precomputed discount amount (already in target currency, positive value).
-	 *
-	 * @return array Updated items array.
-	 */
-	private function maybe_append_discount_line( array $items, WC_Order $order, array $extra_args, ?float $amount = null ): array {
-		if ( ! $this->should_export_discounts_as_separate_item() || ! $order->get_total_discount() ) {
-			return $items;
-		}
-
-		if ( null === $amount ) {
-			$order_total_discount = $order->get_total_discount() * -1;
-			// Maybe convert order total discount using per-order exchange rate.
-			$rate = $this->get_exchange_rate();
-			if ( 1.00 !== $rate ) {
-				$order_total_discount = floatval( $order_total_discount * $rate );
-			}
-			$discount_value = NumberUtil::round( $order_total_discount, wc_get_price_decimals() );
-		} else {
-			$discount_value = NumberUtil::round( floatval( $amount ), wc_get_price_decimals() ) * -1;
-		}
-
-		$items[] = array(
-			'description' => __( 'Total Discount', 'woocommerce-shipstation-integration' ),
-			'quantity'    => 1,
-			'unit_price'  => $discount_value,
-		);
-
-		return $items;
 	}
 
 	/**
@@ -838,12 +867,10 @@ class Orders_Controller extends API_Controller {
 			return $fulfillment_item;
 		}
 
-		$unit_price        = 0;
-		$discount_per_unit = 0;
-		$discount_per_line = 0;
-		$item_url          = '';
-		$item_product      = array();
-		$item_taxes        = array();
+		$unit_price   = 0;
+		$item_url     = '';
+		$item_product = array();
+		$item_taxes   = array();
 
 		if ( 'fee' === $item->get_type() ) {
 			$quantity   = 1;
@@ -892,16 +919,12 @@ class Orders_Controller extends API_Controller {
 				$quantity = $item->get_quantity() - abs( $order->get_qty_refunded_for_item( $item_id ) );
 			}
 
-			$unit_price        = $this->should_export_discounts_as_separate_item() ? $order->get_item_subtotal( $item, false, true ) : $order->get_item_total( $item, false, true );
-			$discount_per_unit = floatval( $order->get_item_subtotal( $item, false, true ) - floatval( $order->get_item_total( $item, false, true ) ) );
-			$discount_per_line = $discount_per_unit * $quantity;
+			$unit_price = $this->should_export_discounts_as_separate_item() ? $order->get_item_subtotal( $item, false, true ) : $order->get_item_total( $item, false, true );
 
 			// Maybe convert item total using per-order exchange rate.
 			$rate = $this->get_exchange_rate();
 			if ( 1.00 !== $rate ) {
 				$unit_price        = floatval( $unit_price * $rate );
-				$discount_per_unit = floatval( $discount_per_unit * $rate );
-				$discount_per_line = floatval( $discount_per_line * $rate );
 			}
 		}
 
@@ -916,11 +939,9 @@ class Orders_Controller extends API_Controller {
 				'product'            => $item_product,
 				'quantity'           => $quantity,
 				'unit_price'         => $unit_price,
-				'discount_per_unit'  => $discount_per_unit,
-				'discount_per_line'  => $discount_per_line,
 				'taxes'              => $this->get_item_taxes( $item_taxes ),
 				'item_url'           => $item_url,
-				'modified_date_time' => $this->get_shipstation_date_format( $order->get_date_modified()->date( 'Y-m-d' ), $order->get_date_modified()->date( 'H:i:s' ) ),
+				'modified_date_time' => $this->get_shipstation_date_format( $order->get_date_modified() ),
 			),
 			function ( $value ) {
 				return ! empty( $value );

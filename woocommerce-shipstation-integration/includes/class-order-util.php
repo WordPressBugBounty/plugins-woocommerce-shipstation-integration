@@ -269,6 +269,32 @@ class Order_Util {
 	}
 
 	/**
+	 * Get shipping method names from the order joined with " | ".
+	 *
+	 * @param WC_Order $order Order object.
+	 * @param boolean  $strip_chars Flag to strip non-alphanumeric characters from method names.
+	 *
+	 * @return string Shipping method names, or empty string if none.
+	 */
+	public static function get_shipping_methods( WC_Order $order, bool $strip_chars = true ): string {
+		$shipping_methods      = $order->get_shipping_methods();
+		$shipping_method_names = array();
+
+		foreach ( $shipping_methods as $shipping_method ) {
+			$method_name = html_entity_decode( $shipping_method->get_name(), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+
+			if ( $strip_chars ) {
+				// Replace non-AlNum characters with space.
+				$method_name = preg_replace( '/[^A-Za-z0-9 \-\.\_,]/', '', $method_name );
+			}
+
+			$shipping_method_names[] = $method_name;
+		}
+
+		return implode( ' | ', $shipping_method_names );
+	}
+
+	/**
 	 * Get all WooCommerce order statuses.
 	 *
 	 * @return array

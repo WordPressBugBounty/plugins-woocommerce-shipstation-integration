@@ -47,14 +47,15 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 	}
 
 	/**
-	 * Parse a date string from ShipStation (in PST/PDT timezone) to a UTC timestamp.
+	 * Parse a ShipStation date string into a Unix timestamp.
 	 *
-	 * @see https://www.shipstation.com/docs/api/requirements/ - "The time zone represented in all responses is PST/PDT".
+	 * @see https://help.shipstation.com/hc/en-us/articles/360025856192 - Custom Store Development Guide:
+	 *      "The start date is UTC time. Format: MM/dd/yyyy HH:mm (24 hour notation)."
 	 *
-	 * @param string $date_string Date string from ShipStation in PST/PDT.
-	 * @return int|false Unix timestamp (UTC), or false on failure.
+	 * @param string $date_string Date string from ShipStation (UTC).
+	 * @return int|false Unix timestamp, or false on failure.
 	 */
-	private function parse_shipstation_date_to_utc( $date_string ) {
+	private function parse_shipstation_date( $date_string ) {
 		if ( empty( $date_string ) ) {
 			return false;
 		}
@@ -76,11 +77,8 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		}
 
 		try {
-			// ShipStation uses PST/PDT (America/Los_Angeles) for all datetime values.
-			$pst_timezone = new \DateTimeZone( 'America/Los_Angeles' );
-			$date         = new \DateTime( $date_string, $pst_timezone );
-			return $date->getTimestamp();
-		} catch ( \Exception $e ) {
+			return ( new \DateTime( $date_string, new \DateTimeZone( 'UTC' ) ) )->getTimestamp();
+		} catch ( \Throwable $e ) {
 			return false;
 		}
 	}
@@ -99,15 +97,14 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		$xml->formatOutput = true;
 		$page              = max( 1, isset( $_GET['page'] ) ? absint( $_GET['page'] ) : 1 );
 		$exported          = 0;
-		$tz_offset         = get_option( 'gmt_offset' ) * 3600;
 		$raw_start_date    = isset( $_GET['start_date'] ) ? urldecode( wc_clean( wp_unslash( $_GET['start_date'] ) ) ) : false;
 		$raw_end_date      = isset( $_GET['end_date'] ) ? urldecode( wc_clean( wp_unslash( $_GET['end_date'] ) ) ) : false;
 		$store_weight_unit = get_option( 'woocommerce_weight_unit' );
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
-		// Parse dates from ShipStation (PST/PDT timezone) to UTC timestamps.
-		$start_timestamp = $this->parse_shipstation_date_to_utc( $raw_start_date );
-		$end_timestamp   = $this->parse_shipstation_date_to_utc( $raw_end_date );
+		// Parse ShipStation date strings (UTC) into Unix timestamps.
+		$start_timestamp = $this->parse_shipstation_date( $raw_start_date );
+		$end_timestamp   = $this->parse_shipstation_date( $raw_end_date );
 
 		if ( false === $start_timestamp || false === $end_timestamp ) {
 			$this->trigger_error( __( 'Invalid start_date or end_date format.', 'woocommerce-shipstation-integration' ) );
@@ -232,18 +229,21 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$this->xml_append( $order_xml, 'OrderID', $order_id );
 
 			// Sequence of date ordering: date paid > date completed > date created.
-			$order_timestamp = $order->get_date_paid() ? $order->get_date_paid() : ( $order->get_date_completed() ? $order->get_date_completed() : $order->get_date_created() );
-			$order_timestamp = $order_timestamp->getOffsetTimestamp();
+			$order_date = $order->get_date_paid() ?? $order->get_date_completed() ?? $order->get_date_created();
 
-			$order_timestamp -= $tz_offset;
-			$order_status     = ( 'refunded' === $order->get_status() ) ? 'cancelled' : $order->get_status();
-			$this->xml_append( $order_xml, 'OrderDate', gmdate( 'm/d/Y H:i', $order_timestamp ), false );
+			if ( null === $order_date ) {
+				$this->log( sprintf( 'Order #%d has no date - skipping export.', $order_id ) );
+				continue;
+			}
+
+			$order_status = ( 'refunded' === $order->get_status() ) ? 'cancelled' : $order->get_status();
+			$this->xml_append( $order_xml, 'OrderDate', gmdate( 'm/d/Y H:i', $order_date->getTimestamp() ), false );
 			$this->xml_append( $order_xml, 'OrderStatus', $order_status );
 			$this->xml_append( $order_xml, 'PaymentMethod', $order->get_payment_method() );
 			$this->xml_append( $order_xml, 'OrderPaymentMethodTitle', $order->get_payment_method_title() );
-			$last_modified = strtotime( $order->get_date_modified()->date( 'm/d/Y H:i' ) ) - $tz_offset;
-			$this->xml_append( $order_xml, 'LastModified', gmdate( 'm/d/Y H:i', $last_modified ), false );
-			$this->xml_append( $order_xml, 'ShippingMethod', implode( ' | ', $this->get_shipping_methods( $order ) ) );
+			$last_modified = $order->get_date_modified() ?? $order_date;
+			$this->xml_append( $order_xml, 'LastModified', gmdate( 'm/d/Y H:i', $last_modified->getTimestamp() ), false );
+			$this->xml_append( $order_xml, 'ShippingMethod', Order_Util::get_shipping_methods( $order ) );
 
 			$this->xml_append( $order_xml, 'CurrencyCode', $currency_code, false );
 
@@ -520,26 +520,6 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		/* translators: 1: total count */
 		$this->log( sprintf( __( 'Exported %s orders', 'woocommerce-shipstation-integration' ), $exported ) );
 		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
-	}
-
-	/**
-	 * Get shipping method names
-	 *
-	 * @param WC_Order $order Order object.
-	 *
-	 * @return array
-	 */
-	private function get_shipping_methods( $order ) {
-		$shipping_methods      = $order->get_shipping_methods();
-		$shipping_method_names = array();
-
-		foreach ( $shipping_methods as $shipping_method ) {
-			// Replace non-AlNum characters with space.
-			$method_name             = preg_replace( '/[^A-Za-z0-9 \-\.\_,]/', '', $shipping_method['name'] );
-			$shipping_method_names[] = $method_name;
-		}
-
-		return $shipping_method_names;
 	}
 
 	/**
