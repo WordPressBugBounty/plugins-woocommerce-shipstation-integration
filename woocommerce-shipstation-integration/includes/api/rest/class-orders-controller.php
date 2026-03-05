@@ -630,7 +630,7 @@ class Orders_Controller extends API_Controller {
 				$payment_info['adjustments'][] = array(
 					// translators: %1$s is a coupon code.
 					'description' => sprintf( __( 'Discount from coupon: %1$s', 'woocommerce-shipstation-integration' ), $coupon->get_code() ),
-					'amount'      => NumberUtil::round( $coupon_amount, wc_get_price_decimals() ),
+					'amount'      => -NumberUtil::round( $coupon_amount, wc_get_price_decimals() ),
 				);
 			}
 		}
@@ -654,7 +654,7 @@ class Orders_Controller extends API_Controller {
 
 			$payment_info['adjustments'][] = array(
 				'description' => __( 'Additional Discount', 'woocommerce-shipstation-integration' ),
-				'amount'      => $non_coupon_discount,
+				'amount'      => -$non_coupon_discount,
 			);
 		}
 
@@ -892,7 +892,7 @@ class Orders_Controller extends API_Controller {
 			 */
 			$product_id   = $item->get_variation_id() ? $item->get_variation_id() : $item->get_product_id();
 			$item_url     = $product->get_permalink();
-			$unit_cost    = is_callable( array( $item, 'get_cogs_value' ) ) ? $item->get_cogs_value() : 0;
+			$unit_cost    = $this->get_item_cogs_value( $item );
 			$item_product = array(
 				'product_id'  => $product_id,
 				'name'        => $item->get_name(),
@@ -995,6 +995,25 @@ class Orders_Controller extends API_Controller {
 			'unit'  => $ss_weight_unit,
 			'value' => wc_get_weight( floatval( $product->get_weight() ), $weight_unit ),
 		);
+	}
+
+	/**
+	 * Get the COGS value for an order item.
+	 *
+	 * Caches the result of the feature flag check in a static local variable
+	 * to avoid repeated container lookups across items.
+	 *
+	 * @param WC_Order_Item_Product $item Order item.
+	 * @return float
+	 */
+	private function get_item_cogs_value( WC_Order_Item_Product $item ): float {
+		static $enabled = null;
+
+		if ( null === $enabled ) {
+			$enabled = Order_Util::is_cogs_enabled();
+		}
+
+		return ( $enabled && is_callable( array( $item, 'get_cogs_value' ) ) ) ? $item->get_cogs_value() : 0;
 	}
 
 	/**

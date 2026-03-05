@@ -8,6 +8,7 @@
 namespace WooCommerce\Shipping\ShipStation;
 
 use Automattic\WooCommerce\Utilities\OrderUtil;
+use Automattic\WooCommerce\Internal\CostOfGoodsSold\CostOfGoodsSoldController;
 use WC_Order;
 use WP_Post;
 
@@ -359,5 +360,18 @@ class Order_Util {
 		}
 
 		return $order_notes;
+	}
+
+	/**
+	 * Checks whether the WooCommerce Cost of Goods Sold feature is enabled.
+	 *
+	 * @return bool
+	 */
+	public static function is_cogs_enabled(): bool {
+		try {
+			return wc_get_container()->get( CostOfGoodsSoldController::class )->feature_is_enabled();
+		} catch ( \Exception $e ) {
+			return false;
+		}
 	}
 }

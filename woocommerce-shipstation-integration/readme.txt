@@ -7,7 +7,7 @@ WC tested up to: 10.5
 WC requires at least: 10.3
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.9.3
+Stable tag: 4.9.4
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 4.9.4 - 2026-03-05 =
+* Fix   - REST API payment adjustments now correctly use negative values for cart discounts.
+* Fix   - Prevent spurious log warnings when retrieving cost of goods sold on stores with the COGS feature disabled.
 
 = 4.9.3 - 2026-03-04 =
 * Add   - Populate shipping service name in REST API order export fulfillment data.
