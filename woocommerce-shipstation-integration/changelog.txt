@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 4.9.5 - 2026-03-09 =
+* Tweak - WooCommerce 10.6 Compatibility.
+
 = 4.9.4 - 2026-03-05 =
 * Fix   - REST API payment adjustments now correctly use negative values for cart discounts.
 * Fix   - Prevent spurious log warnings when retrieving cost of goods sold on stores with the COGS feature disabled.

@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, automattic
 Requires at least: 6.8
 Tested up to: 6.9
-WC tested up to: 10.5
-WC requires at least: 10.3
+WC tested up to: 10.6
+WC requires at least: 10.4
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.9.4
+Stable tag: 4.9.5
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 4.9.5 - 2026-03-09 =
+* Tweak - WooCommerce 10.6 Compatibility.
 
 = 4.9.4 - 2026-03-05 =
 * Fix   - REST API payment adjustments now correctly use negative values for cart discounts.
