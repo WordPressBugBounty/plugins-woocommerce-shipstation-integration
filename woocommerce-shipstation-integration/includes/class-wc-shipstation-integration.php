@@ -537,6 +537,12 @@ class WC_ShipStation_Integration extends WC_Integration {
 			return;
 		}
 
+		$current_screen = get_current_screen();
+
+		if ( $current_screen instanceof WP_Screen && 'users' === $current_screen->id ) {
+			return;
+		}
+
 		$logo_title = __( 'ShipStation logo', 'woocommerce-shipstation-integration' );
 		?>
 		<div class="notice notice-warning">
@@ -573,7 +579,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 				endif;
 				?>
 			</p>
-			<hr>
+			<hr />
 			<p>
 				<?php
 				printf(

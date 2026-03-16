@@ -1,5 +1,11 @@
 *** ShipStation for WooCommerce ***
 
+= 4.9.7 - 2026-03-16 =
+* Fix   - Eliminate redundant order item lookups in the REST API.
+
+= 4.9.6 - 2026-03-16 =
+* Fix   - Trigger `woocommerce_api_wc_shipstation` action when calling REST API orders export endpoint for 3rd party plugins compatibility.
+
 = 4.9.5 - 2026-03-09 =
 * Tweak - WooCommerce 10.6 Compatibility.
 

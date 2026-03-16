@@ -19,6 +19,7 @@ use WC_Order_Item_Product;
 use WC_Order_Item_Tax;
 use WC_Tax;
 use WC_ShipStation_Integration;
+use WooCommerce\Shipping\ShipStation\Main;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -324,6 +325,9 @@ class Orders_Controller extends API_Controller {
 		* @since 4.8.0
 		*/
 		do_action( 'woocommerce_shipstation_get_orders_before_process_request', $request_params );
+
+		// Ensure third-party export filters (e.g. Product Bundles) are loaded.
+		$this->fire_legacy_api_action();
 
 		// Get parameters.
 		$modified_after = isset( $request_params['modified_after'] ) ? strtotime( $request_params['modified_after'] ) : null;
@@ -782,8 +786,8 @@ class Orders_Controller extends API_Controller {
 		$fulfillment_items = array();
 		$order_items       = $order->get_items() + $order->get_items( 'fee' );
 
-		foreach ( $order_items as $item_id => $item ) {
-			$fulfillment_item = $this->get_fulfillment_item( intval( $item_id ), $order, 0, $extra_args );
+		foreach ( $order_items as $item ) {
+			$fulfillment_item = $this->get_fulfillment_item( $item, $order, 0, $extra_args );
 
 			if ( empty( $fulfillment_item ) ) {
 				continue;
@@ -838,21 +842,21 @@ class Orders_Controller extends API_Controller {
 	}
 
 	/**
-	 * Get fulfillment item from WC Fufillment.
+	 * Get fulfillment item from WC Fulfillment.
 	 *
-	 * @param int      $item_id    Order item ID.
-	 * @param WC_Order $order      Order object.
-	 * @param int      $quantity   Item quantity.
-	 * @param array    $extra_args Extra args.
+	 * @param WC_Order_Item $item       Order item object.
+	 * @param WC_Order      $order      Order object.
+	 * @param int           $quantity   Item quantity.
+	 * @param array         $extra_args Extra args.
 	 */
-	public function get_fulfillment_item( $item_id, $order, $quantity = 0, $extra_args = array() ) {
-		$item             = $order->get_item( $item_id );
+	public function get_fulfillment_item( $item, $order, $quantity = 0, $extra_args = array() ) {
 		$fulfillment_item = array();
 
 		if ( ! $item instanceof WC_Order_Item ) {
 			return $fulfillment_item;
 		}
 
+		$item_id                 = $item->get_id();
 		$is_order_item_a_product = $item instanceof WC_Order_Item_Product;
 		$product                 = $is_order_item_a_product ? $item->get_product() : false;
 		$item_needs_no_shipping  = ! $product || ! $product->needs_shipping();
@@ -1681,5 +1685,35 @@ class Orders_Controller extends API_Controller {
 		);
 
 		return wp_parse_args( $address, $default_address );
+	}
+
+	/**
+	 * Fire the legacy woocommerce_api_wc_shipstation action if it hasn't
+	 * already been fired in this request.
+	 *
+	 * Plugins like WooCommerce Product Bundles hook into this
+	 * action to register filters on woocommerce_order_get_items and
+	 * woocommerce_order_item_product that reshape order items for export.
+	 *
+	 * In the XML API path the action fires naturally via WooCommerce's
+	 * legacy API mechanism, but the REST API path never triggers it.
+	 * Calling this method at the top of the REST endpoint ensures those
+	 * third-party filters are in place before any order items are retrieved.
+	 *
+	 * @return void
+	 */
+	protected function fire_legacy_api_action(): void {
+		if ( did_action( 'woocommerce_api_wc_shipstation' ) ) {
+			return;
+		}
+
+		$main_instance = Main::instance();
+		$removed       = remove_action( 'woocommerce_api_wc_shipstation', array( $main_instance, 'load_api' ) );
+
+		do_action( 'woocommerce_api_wc_shipstation' );
+
+		if ( $removed ) {
+			add_action( 'woocommerce_api_wc_shipstation', array( $main_instance, 'load_api' ) );
+		}
 	}
 }
