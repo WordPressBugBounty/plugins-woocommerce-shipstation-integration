@@ -7,7 +7,7 @@ WC tested up to: 10.6
 WC requires at least: 10.4
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.9.7
+Stable tag: 4.9.8
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 4.9.8 - 2026-03-23 =
+* Fix   - Decode HTML entities in item option names and values before export to prevent special characters (e.g. & and £) from appearing as HTML entities on ShipStation packing slips.
+* Fix   - Prevent API credentials from being displayed when the database write fails, and ensure old keys are not deleted until new ones are successfully saved.
 
 = 4.9.7 - 2026-03-16 =
 * Fix   - Eliminate redundant order item lookups in the REST API.

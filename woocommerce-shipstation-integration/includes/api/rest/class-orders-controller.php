@@ -1206,8 +1206,8 @@ class Orders_Controller extends API_Controller {
 
 		foreach ( $formatted_meta as $meta_key => $meta ) {
 			$item_details[] = array(
-				'name'  => $meta->display_key,
-				'value' => wp_strip_all_tags( $meta->display_value ),
+				'name'  => html_entity_decode( $meta->display_key, ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
+				'value' => html_entity_decode( wp_strip_all_tags( $meta->display_value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
 			);
 		}
 

@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use Automattic\WooCommerce\Utilities\FeaturesUtil;
+use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Shipping_Method;
 use WooCommerce\Shipping\ShipStation\REST_API_Loader;
 use WC_ShipStation_Privacy;
 use WC_Shipstation_API;
@@ -85,6 +86,8 @@ class Main {
 
 		add_action( 'before_woocommerce_init', array( $this, 'before_woocommerce_init' ) );
 		add_action( 'woocommerce_init', array( $this, 'load_rest_api' ) );
+
+		add_filter( 'woocommerce_shipping_methods', array( $this, 'register_shipping_methods' ) );
 	}
 
 	/**
@@ -143,6 +146,26 @@ class Main {
 		$integrations[] = 'WC_ShipStation_Integration';
 
 		return $integrations;
+	}
+
+	/**
+	 * Register ShipStation shipping methods.
+	 *
+	 * @since 4.9.6
+	 *
+	 * @param array $methods Registered shipping methods.
+	 *
+	 * @return array Shipping methods.
+	 */
+	public function register_shipping_methods( array $methods ): array {
+		if ( ! Features::is_checkout_rates_enabled() ) {
+			return $methods;
+		}
+
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-shipping-method.php';
+		$methods['shipstation_checkout_rates'] = Checkout_Rates_Shipping_Method::class;
+
+		return $methods;
 	}
 
 	/**

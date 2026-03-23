@@ -442,8 +442,8 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 
 						foreach ( $formatted_meta as $meta_key => $meta ) {
 							$option_xml = $xml->createElement( 'Option' );
-							$this->xml_append( $option_xml, 'Name', $meta->display_key );
-							$this->xml_append( $option_xml, 'Value', wp_strip_all_tags( $meta->display_value ) );
+							$this->xml_append( $option_xml, 'Name', html_entity_decode( $meta->display_key, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+							$this->xml_append( $option_xml, 'Value', html_entity_decode( wp_strip_all_tags( $meta->display_value ), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 							$options_xml->appendChild( $option_xml );
 						}
 

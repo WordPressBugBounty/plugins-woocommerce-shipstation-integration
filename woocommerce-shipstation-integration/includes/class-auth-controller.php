@@ -96,6 +96,8 @@ class Auth_Controller {
 		$api_key_id = get_option( self::API_KEY_ID_OPTION, false );
 
 		if ( $api_key_id && $this->api_key_exists( $api_key_id ) ) {
+			// If a valid API key pair already exists, return an empty array.
+			// The consumer_key is stored as a hash and cannot be displayed.
 			return array();
 		}
 
@@ -137,7 +139,7 @@ class Auth_Controller {
 			'truncated_key'   => substr( $consumer_key, -7 ),
 		);
 
-		$wpdb->insert(
+		$result = $wpdb->insert(
 			$table_name,
 			$data,
 			array(
@@ -149,6 +151,11 @@ class Auth_Controller {
 				'%s',
 			)
 		);
+
+		if ( false === $result || $wpdb->insert_id <= 0 ) {
+			Logger::error( 'Failed to insert API key into database. DB error: ' . $wpdb->last_error );
+			return array();
+		}
 
 		$api_key_id = $wpdb->insert_id;
 		update_option( self::API_KEY_ID_OPTION, $api_key_id );
@@ -187,14 +194,17 @@ class Auth_Controller {
 	 * @return array New API credentials.
 	 */
 	private function generate_new_keys(): array {
-		// Delete old credentials from database.
 		$old_api_key_id = get_option( self::API_KEY_ID_OPTION, false );
-		if ( $old_api_key_id ) {
-			$this->delete_api_credentials_by_id( $old_api_key_id );
+
+		// Generate new credentials first. Only delete the old key if the DB write
+		// succeeds — a failure must not leave the user without any valid credentials.
+		$new_credentials = $this->generate_api_credentials();
+
+		if ( ! empty( $new_credentials['api_key_id'] ) && $old_api_key_id ) {
+			$this->delete_api_credentials_by_id( (int) $old_api_key_id );
 		}
 
-		// Generate new credentials.
-		return $this->generate_api_credentials();
+		return $new_credentials;
 	}
 
 	/**
@@ -207,11 +217,15 @@ class Auth_Controller {
 
 		$table_name = $wpdb->prefix . 'woocommerce_api_keys';
 
-		$wpdb->delete(
+		$result = $wpdb->delete(
 			$table_name,
 			array( 'key_id' => $api_key_id ),
 			array( '%d' )
 		);
+
+		if ( false === $result ) {
+			Logger::error( 'Failed to delete API key ID ' . $api_key_id . ' from database. DB error: ' . $wpdb->last_error );
+		}
 	}
 
 	/**
@@ -228,6 +242,16 @@ class Auth_Controller {
 		}
 
 		$auth_data = $this->get_auth_data();
+
+		// If no new credentials were returned, check whether it's because they already
+		// exist (normal: credentials are only shown once) or because the DB write failed.
+		if ( ! isset( $auth_data['consumer_key'] ) ) {
+			$api_key_id = get_option( self::API_KEY_ID_OPTION, false );
+			if ( ! $api_key_id || ! $this->api_key_exists( (int) $api_key_id ) ) {
+				wp_send_json_error( array( 'message' => __( 'Failed to generate API credentials. Please try again or contact your hosting provider if the issue persists.', 'woocommerce-shipstation-integration' ) ) );
+				return;
+			}
+		}
 
 		wp_send_json_success( $auth_data );
 	}
@@ -246,6 +270,11 @@ class Auth_Controller {
 		}
 
 		$new_credentials = $this->generate_new_keys();
+
+		if ( empty( $new_credentials ) ) {
+			wp_send_json_error( array( 'message' => __( 'Failed to generate API credentials. Please try again or contact your hosting provider if the issue persists.', 'woocommerce-shipstation-integration' ) ) );
+			return;
+		}
 
 		$auth_data = array(
 			'consumer_key'    => $new_credentials['consumer_key'],

@@ -107,7 +107,7 @@
 					if ( response && response.success ) {
 						AuthDisplay.populateModal( response.data );
 					} else {
-						AuthDisplay.showError( ( response && response.data ) || wc_shipstation_auth_params.error_text );
+						AuthDisplay.showError( ( response && response.data && response.data.message ) || wc_shipstation_auth_params.error_text );
 					}
 				} )
 				.catch( function () {
@@ -293,7 +293,7 @@
 					if ( response && response.success ) {
 						AuthDisplay.populateModal( response.data );
 					} else {
-						AuthDisplay.showError( ( response && response.data ) || wc_shipstation_auth_params.error_text );
+						AuthDisplay.showError( ( response && response.data && response.data.message ) || wc_shipstation_auth_params.error_text );
 					}
 				} )
 				.catch( function () {
