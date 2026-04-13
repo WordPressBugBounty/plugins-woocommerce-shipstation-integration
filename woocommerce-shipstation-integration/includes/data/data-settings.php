@@ -112,7 +112,7 @@ $fields = array(
 		'options'     => $statuses,
 		'description' => __( 'Define the order status you wish to map for ShipStation "Cancelled" status. By default this is "cancelled".', 'woocommerce-shipstation-integration' ),
 		'desc_tip'    => true,
-		'default'     => array( OrderInternalStatus::CANCELLED ),
+		'default'     => array( OrderInternalStatus::CANCELLED, OrderInternalStatus::REFUNDED ),
 	),
 	'gift_enabled'                                         => array(
 		'title'       => __( 'Gift', 'woocommerce-shipstation-integration' ),

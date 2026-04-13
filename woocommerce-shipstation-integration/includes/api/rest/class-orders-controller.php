@@ -13,9 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use WC_DateTime;
 use WC_Order;
+use WC_Order_Refund;
 use WC_Order_Item;
 use WC_Order_Item_Coupon;
 use WC_Order_Item_Product;
+use WC_Order_Item_Shipping;
 use WC_Order_Item_Tax;
 use WC_Tax;
 use WC_ShipStation_Integration;
@@ -285,6 +287,10 @@ class Orders_Controller extends API_Controller {
 			}
 		}
 
+		if ( 'refunded' === $order_status ) {
+			return WC_ShipStation_Integration::CANCELLED_STATUS;
+		}
+
 		return 'Unknown';
 	}
 
@@ -300,6 +306,10 @@ class Orders_Controller extends API_Controller {
 
 		foreach ( $status_mapping as $shipstation_status => $wc_statuses ) {
 			if ( $status === $shipstation_status ) {
+				if ( WC_ShipStation_Integration::CANCELLED_STATUS === $shipstation_status && ! in_array( 'refunded', $wc_statuses, true ) ) {
+					$wc_statuses[] = 'refunded';
+				}
+
 				return $wc_statuses;
 			}
 		}
@@ -521,6 +531,7 @@ class Orders_Controller extends API_Controller {
 			'notes'                  => $this->get_notes( $order ),
 			'created_date_time'      => $this->get_shipstation_date_format( $order->get_date_created() ),
 			'modified_date_time'     => $this->get_shipstation_date_format( $order->get_date_modified() ),
+			'returns'                => $this->get_returns( $order ),
 		);
 
 		/**
@@ -550,22 +561,25 @@ class Orders_Controller extends API_Controller {
 	 * @return array
 	 */
 	public function get_buyer( WC_Order $order ): array {
-		$buyer = $order->get_user();
+		$buyer = array();
 
-		if ( false !== $buyer ) {
-			return array(
-				'buyer_id' => $buyer->user_login,
-				'name'     => $buyer->user_firstname . ' ' . $buyer->user_lastname,
-				'email'    => $buyer->user_email,
-				'phone'    => $order->get_billing_phone(),
-			);
+		$name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+		if ( '' !== $name ) {
+			$buyer['name'] = $name;
 		}
 
-		return array(
-			'name'  => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
-			'email' => $order->get_billing_email(),
-			'phone' => $order->get_billing_phone(),
-		);
+		$phone = $order->get_billing_phone();
+		if ( '' !== $phone ) {
+			$buyer['phone'] = $phone;
+		}
+
+		$email = $order->get_billing_email();
+		if ( is_email( $email ) ) {
+			$buyer['email']    = $email;
+			$buyer['buyer_id'] = $email;
+		}
+
+		return $buyer;
 	}
 
 	/**
@@ -923,6 +937,17 @@ class Orders_Controller extends API_Controller {
 				$quantity = $item->get_quantity() - abs( $order->get_qty_refunded_for_item( $item_id ) );
 			}
 
+			// With a non-integer quantity (i.e. 0.375) always export the quantity as 1 with an added product details key-value.
+			// eg : 3.1m of fabric, its just 1 item in the package.
+			if ( floor( (float) $quantity ) !== (float) $quantity ) {
+				$item_product['details'][] = array(
+					'name'  => 'Amount',
+					'value' => (string) $quantity,
+				);
+
+				$quantity = 1;
+			}
+
 			$unit_price = $this->should_export_discounts_as_separate_item() ? $order->get_item_subtotal( $item, false, true ) : $order->get_item_total( $item, false, true );
 
 			// Maybe convert item total using per-order exchange rate.
@@ -930,10 +955,6 @@ class Orders_Controller extends API_Controller {
 			if ( 1.00 !== $rate ) {
 				$unit_price        = floatval( $unit_price * $rate );
 			}
-		}
-
-		if ( 0 === $quantity ) {
-			return $fulfillment_item;
 		}
 
 		$fulfillment_item = array_filter(
@@ -948,7 +969,7 @@ class Orders_Controller extends API_Controller {
 				'modified_date_time' => $this->get_shipstation_date_format( $order->get_date_modified() ),
 			),
 			function ( $value ) {
-				return ! empty( $value );
+				return ! empty( $value ) || ( is_numeric( $value ) && 0 == $value );
 			}
 		);
 
@@ -966,6 +987,189 @@ class Orders_Controller extends API_Controller {
 		 * @param array         $extra_args       Extra arguments passed to the method.
 		 */
 		return apply_filters( 'woocommerce_shipstation_fulfillment_item', $fulfillment_item, $order, $item, $extra_args );
+	}
+
+	/**
+	 * Get returns info for the order.
+	 *
+	 * @param WC_Order $order Order object.
+	 *
+	 * @return array
+	 */
+	public function get_returns( $order ) {
+		$returns = array();
+
+		foreach ( $order->get_refunds() as $refund ) {
+			$qty = 0;
+			foreach ( $refund->get_items() as $refunded_item ) {
+				$qty += $refunded_item->get_quantity();
+			}
+
+			$status      = apply_filters( 'woocommerce_shipstation_return_status', ucwords( $refund->get_status() ), $refund, $order );
+			$refund_args = $refund->get_meta( '_wc_shipstation_refund_args', true );
+			$return_data = array(
+				'status'             => $status,
+				'created_date_time'  => $this->get_shipstation_date_format( $refund->get_date_created() ),
+				'modified_date_time' => $this->get_shipstation_date_format( $refund->get_date_modified() ),
+				'total_quantity'     => abs( $qty ),
+				'currency'           => $this->get_currency_code(),
+				'authorization'      => array(
+					'is_approved' => apply_filters( 'woocommerce_shipstation_return_is_approved', true, $refund, $order ),
+				),
+				'refunds'            => $this->get_refund_data( $refund ),
+			);
+
+			if ( ! empty( $refund_args['restock_items'] ) ) {
+				$return_data['return_requested_fulfillments'] = $this->get_return_requested_fulfillments( $refund );
+			}
+			$returns[] = $return_data;
+		}
+
+		return $returns;
+	}
+
+	/**
+	 * Get return requested fulfillments for the order refund.
+	 *
+	 * @param WC_Order_Refund $order_refund Order refund object.
+	 *
+	 * @return array
+	 */
+	public function get_return_requested_fulfillments( $order_refund ) {
+		$return_items  = array();
+		$refund_reason = $order_refund->get_reason();
+		$rate          = $this->get_exchange_rate();
+
+		foreach ( $order_refund->get_items() as $refund_item ) {
+			/**
+			 * Handle refunded item data.
+			 *
+			 * @var WC_Order_Item_Product $refund_item
+			 */
+			$original_item_id = $refund_item->get_meta( '_refunded_item_id', true );
+			$quantity         = absint( $refund_item->get_quantity() );
+
+			$unit_price = abs( $refund_item->get_total() ) / max( 1, $quantity );
+			// Maybe convert item total using per-order exchange rate.
+			if ( 1.00 !== $rate ) {
+				$unit_price = $unit_price * $rate;
+			}
+
+			$return_item = array(
+				'line_item_id'  => $original_item_id,
+				'description'   => $refund_item->get_name(),
+				'product'       => array(
+					'product_id' => $refund_item->get_product_id(),
+					'name'       => $refund_item->get_name(),
+				),
+				'return_reason' => $refund_reason,
+				'quantity'      => $quantity,
+				'unit_price'    => $unit_price,
+				'currency'      => $this->get_currency_code(),
+				'is_active'     => true, // Hardcoded to true assuming all return requested fulfillments are active since WooCommerce does not have a built-in concept of fulfillment activity status.
+			);
+
+			$return_items[] = $return_item;
+		}
+
+		if ( ! empty( $return_items ) ) {
+			return array(
+				array(
+					'return_items' => $return_items,
+				),
+			);
+		}
+
+		return array();
+	}
+
+	/**
+	 * Get refunds info for the order refund.
+	 *
+	 * @param WC_Order_Refund $order_refund Order refund object.
+	 *
+	 * @return array
+	 */
+	public function get_refund_data( $order_refund ) {
+		$rate           = $this->get_exchange_rate();
+		$total_refunded = abs( $order_refund->get_amount() );
+
+		// Maybe convert unit price using per-order exchange rate.
+		if ( 1.00 !== $rate ) {
+			$total_refunded = $total_refunded * $rate;
+		}
+
+		return array(
+			array(
+				'order_id'            => $order_refund->get_parent_id(),
+				'created_date_time'   => $this->get_shipstation_date_format( $order_refund->get_date_created() ),
+				'modified_date_time'  => $this->get_shipstation_date_format( $order_refund->get_date_modified() ),
+				'total_refunded'      => $total_refunded,
+				'currency'            => $this->get_currency_code(),
+				'return_item_refunds' => $this->get_return_item_refunds( $order_refund ),
+			),
+		);
+	}
+
+	/**
+	 * Get return item refunds for the order refund.
+	 *
+	 * @param WC_Order_Refund $order_refund Order refund object.
+	 *
+	 * @return array
+	 */
+	public function get_return_item_refunds( $order_refund ) {
+		$return_item_refunds = array();
+		$refunded_shipping   = array();
+		$rate                = $this->get_exchange_rate();
+
+		foreach ( $order_refund->get_items() as $refund_item ) {
+			/**
+			 * Handle refunded item data.
+			 *
+			 * @var WC_Order_Item_Product $refund_item
+			 */
+			$quantity          = absint( $refund_item->get_quantity() );
+			$unit_price_refund = abs( $refund_item->get_total() ) / max( 1, $quantity );
+
+			// Maybe convert unit price using per-order exchange rate.
+			if ( 1.00 !== $rate ) {
+				$unit_price_refund = floatval( $unit_price_refund * $rate );
+			}
+
+			$return_item_refunds[] = array(
+				'refund_quantity'   => $quantity,
+				'unit_price_refund' => $unit_price_refund,
+				'taxes_refunded'    => $this->get_item_taxes( $refund_item->get_taxes(), true ),
+			);
+		}
+
+		foreach ( $order_refund->get_items( 'shipping' ) as $refund_shipping ) {
+			/**
+			 * Handle refunded shipping data.
+			 *
+			 * @var WC_Order_Item_Shipping $refund_shipping
+			 */
+			$total = abs( $refund_shipping->get_total() ) + abs( $refund_shipping->get_total_tax() );
+
+			// Maybe convert shipping amount using per-order exchange rate.
+			if ( 1.00 !== $rate ) {
+				$total = floatval( $total * $rate );
+			}
+
+			$refunded_shipping[] = array(
+				'amount'      => $total,
+				'description' => $refund_shipping->get_name(),
+			);
+		}
+
+		if ( ! empty( $refunded_shipping ) ) {
+			$return_item_refunds[] = array(
+				'shipping_charges_refunded' => $refunded_shipping,
+			);
+		}
+
+		return $return_item_refunds;
 	}
 
 	/**
@@ -1052,21 +1256,30 @@ class Orders_Controller extends API_Controller {
 	 * Get taxes information from the item.
 	 *
 	 * @param array $item_taxes Item Taxes.
+	 * @param bool  $is_refund  Whether the taxes are for a refund or not, which can be used to adjust the tax data accordingly if needed in the future.
 	 *
 	 * @return array
 	 */
-	public function get_item_taxes( $item_taxes ) {
+	public function get_item_taxes( $item_taxes, $is_refund = false ) {
 		$taxes = array();
 
 		if ( ! is_array( $item_taxes ) || empty( $item_taxes['total'] ) ) {
 			return $taxes;
 		}
 
+		$rate = $this->get_exchange_rate();
+
 		foreach ( $item_taxes['total'] as $rate_id => $rate_value ) {
-			$tax_label = WC_Tax::get_rate_label( $rate_id );
+			$tax_label  = WC_Tax::get_rate_label( $rate_id );
+			$tax_amount = ( ! $is_refund ) ? floatval( $rate_value ) : abs( floatval( $rate_value ) );
+
+			// Maybe convert tax amount using per-order exchange rate.
+			if ( 1.00 !== $rate ) {
+				$tax_amount = floatval( $tax_amount * $rate );
+			}
 
 			$taxes[] = array(
-				'amount'      => floatval( $rate_value ),
+				'amount'      => $tax_amount,
 				'description' => ! empty( $tax_label ) ? $tax_label : __( 'Tax', 'woocommerce-shipstation-integration' ),
 			);
 		}

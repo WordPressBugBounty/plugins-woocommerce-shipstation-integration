@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, automattic
 Requires at least: 6.8
 Tested up to: 6.9
-WC tested up to: 10.6
-WC requires at least: 10.4
+WC tested up to: 10.7
+WC requires at least: 10.5
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 4.9.8
+Stable tag: 5.0.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,12 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.0 - 2026-04-13 =
+* Add   - `returns` field to the REST API order response to expose refund and return data, enabling ShipStation to detect fully refunded/cancelled orders and update their status accordingly.
+* Fix   - Orders with fractional item quantities (e.g. 0.375 yards of fabric) now export correctly to ShipStation, with the original amount visible in the product details panel.
+* Fix   - Use the order's billing name and email for buyer details in the REST API response so ShipStation reflects the actual order contact rather than the linked customer account profile.
+* Tweak - WooCommerce 10.7 Compatibility.
 
 = 4.9.8 - 2026-03-23 =
 * Fix   - Decode HTML entities in item option names and values before export to prevent special characters (e.g. & and £) from appearing as HTML entities on ShipStation packing slips.
