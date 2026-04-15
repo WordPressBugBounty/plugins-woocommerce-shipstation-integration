@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 5.0.1 - 2026-04-15 =
+* Fix   - Assign REST API credentials to the site's first administrator to prevent `rest_forbidden` errors when key generation is triggered by a shop manager or other non-administrator account.
+
 = 5.0.0 - 2026-04-13 =
 * Add   - `returns` field to the REST API order response to expose refund and return data, enabling ShipStation to detect fully refunded/cancelled orders and update their status accordingly.
 * Fix   - Orders with fractional item quantities (e.g. 0.375 yards of fabric) now export correctly to ShipStation, with the original amount visible in the product details panel.
