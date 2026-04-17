@@ -1,5 +1,10 @@
 *** ShipStation for WooCommerce ***
 
+= 5.0.2 - 2026-04-17 =
+* Fix   - Decode HTML entities in order customer notes, internal notes, and gift messages before export so special characters (e.g. &, £, ') appear correctly in ShipStation rather than as HTML entities.
+* Fix   - Separate customer-facing order notes from internal notes in the REST API response so notes added for the buyer are exported as `NotesToBuyer` instead of being mixed into `InternalNotes`.
+* Fix   - Fall back to user account and shipping details for buyer name, email, and phone when billing fields are not populated.
+
 = 5.0.1 - 2026-04-15 =
 * Fix   - Assign REST API credentials to the site's first administrator to prevent `rest_forbidden` errors when key generation is triggered by a shop manager or other non-administrator account.
 

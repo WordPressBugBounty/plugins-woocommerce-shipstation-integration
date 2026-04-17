@@ -7,7 +7,7 @@ WC tested up to: 10.7
 WC requires at least: 10.5
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.0.1
+Stable tag: 5.0.2
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,11 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.2 - 2026-04-17 =
+* Fix   - Decode HTML entities in order customer notes, internal notes, and gift messages before export so special characters (e.g. &, £, ') appear correctly in ShipStation rather than as HTML entities.
+* Fix   - Separate customer-facing order notes from internal notes in the REST API response so notes added for the buyer are exported as `NotesToBuyer` instead of being mixed into `InternalNotes`.
+* Fix   - Fall back to user account and shipping details for buyer name, email, and phone when billing fields are not populated.
 
 = 5.0.1 - 2026-04-15 =
 * Fix   - Assign REST API credentials to the site's first administrator to prevent `rest_forbidden` errors when key generation is triggered by a shop manager or other non-administrator account.

@@ -332,13 +332,18 @@ class Order_Util {
 	}
 
 	/**
-	 * Get internal order notes (non-customer) for an order.
+	 * Get order notes grouped by visibility.
 	 *
-	 * Mirrors previous logic from WC_Shipstation_API_Export::get_order_notes().
-	 * Returns a flat array of note strings suitable for export or further formatting.
+	 * Fetches all approved order notes for a given order and separates them into:
+	 * - Customer notes (visible to the customer).
+	 * - Private notes (internal use only).
 	 *
 	 * @param WC_Order $order Order object.
-	 * @return array Array of internal note strings.
+	 *
+	 * @return array{
+	 * private: string[],
+	 * customer: string[]
+	 * }
 	 */
 	public static function get_order_notes( WC_Order $order ): array {
 		$args = array(
@@ -351,11 +356,15 @@ class Order_Util {
 		$notes = get_comments( $args );
 		add_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10, 1 );
 
-		$order_notes = array();
+		$order_notes = array(
+			'private'  => array(),
+			'customer' => array(),
+		);
 
 		foreach ( $notes as $note ) {
 			if ( 'WooCommerce' !== $note->comment_author ) {
-				$order_notes[] = $note->comment_content;
+				$note_type                   = (bool) get_comment_meta( $note->comment_ID, 'is_customer_note', true ) ? 'customer' : 'private';
+				$order_notes[ $note_type ][] = html_entity_decode( $note->comment_content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 			}
 		}
 

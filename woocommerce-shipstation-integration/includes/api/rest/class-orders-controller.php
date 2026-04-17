@@ -500,7 +500,6 @@ class Orders_Controller extends API_Controller {
 			'status'                 => $shipstation_order_status,
 			'paid_date'              => $paid_date,
 			'requested_fulfillments' => $this->get_requested_fulfillments( $order, $extra_args ),
-			'buyer'                  => $this->get_buyer( $order ),
 			'bill_to'                => array(
 				'email'          => $order->get_billing_email(),
 				'name'           => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
@@ -534,6 +533,11 @@ class Orders_Controller extends API_Controller {
 			'returns'                => $this->get_returns( $order ),
 		);
 
+		$buyer = $this->get_buyer( $order );
+		if ( ! empty( $buyer ) ) {
+			$order_data['buyer'] = $buyer;
+		}
+
 		/**
 		 * Filter to allow modification of the order data before it is returned.
 		 *
@@ -561,19 +565,46 @@ class Orders_Controller extends API_Controller {
 	 * @return array
 	 */
 	public function get_buyer( WC_Order $order ): array {
-		$buyer = array();
+		$buyer = [];
+		$user  = null;
 
 		$name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
+		if ( '' === $name ) {
+			$user = $order->get_user();
+
+			if ( $user ) {
+				$name = trim( $user->first_name . ' ' . $user->last_name );
+			}
+		}
+
+		if ( '' === $name ) {
+			$name = trim( $order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name() );
+		}
+
+		$email = $order->get_billing_email();
+		if ( ! is_email( $email ) ) {
+			if ( null === $user ) {
+				$user = $order->get_user();
+			}
+
+			if ( $user ) {
+				$email = $user->user_email;
+			}
+		}
+
+		$phone = trim( $order->get_billing_phone() );
+		if ( '' === $phone ) {
+			$phone = trim( $order->get_shipping_phone() );
+		}
+
 		if ( '' !== $name ) {
 			$buyer['name'] = $name;
 		}
 
-		$phone = $order->get_billing_phone();
 		if ( '' !== $phone ) {
 			$buyer['phone'] = $phone;
 		}
 
-		$email = $order->get_billing_email();
 		if ( is_email( $email ) ) {
 			$buyer['email']    = $email;
 			$buyer['buyer_id'] = $email;
@@ -1307,7 +1338,7 @@ class Orders_Controller extends API_Controller {
 			$gift_message = $order->get_meta( Checkout::get_block_prefixed_meta_key( 'gift_message' ) );
 
 			if ( ! empty( $gift_message ) ) {
-				$gift['gift_message'] = wp_specialchars_decode( $gift_message );
+				$gift['gift_message'] = html_entity_decode( $gift_message, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 			}
 		}
 
@@ -1328,7 +1359,7 @@ class Orders_Controller extends API_Controller {
 		if ( ! empty( $order->get_customer_note() ) ) {
 			$notes[] = array(
 				'type' => 'NotesFromBuyer',
-				'text' => $order->get_customer_note(),
+				'text' => html_entity_decode( $order->get_customer_note(), ENT_QUOTES | ENT_HTML5, 'UTF-8' ),
 			);
 		}
 
@@ -1341,12 +1372,19 @@ class Orders_Controller extends API_Controller {
 			);
 		}
 
-		$internal_notes = Order_Util::get_order_notes( $order );
+		$order_notes = Order_Util::get_order_notes( $order );
 
-		if ( ! empty( $internal_notes ) ) {
+		if ( ! empty( $order_notes['private'] ) ) {
 			$notes[] = array(
 				'type' => 'InternalNotes',
-				'text' => implode( ' | ', $internal_notes ),
+				'text' => implode( ' | ', $order_notes['private'] ),
+			);
+		}
+
+		if ( ! empty( $order_notes['customer'] ) ) {
+			$notes[] = array(
+				'type' => 'NotesToBuyer',
+				'text' => implode( ' | ', $order_notes['customer'] ),
 			);
 		}
 

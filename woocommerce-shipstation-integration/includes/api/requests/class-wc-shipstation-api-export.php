@@ -278,8 +278,10 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			}
 
 			$this->xml_append( $order_xml, 'ShippingAmount', $shipping_total, false );
-			$this->xml_append( $order_xml, 'CustomerNotes', $order->get_customer_note() );
-			$this->xml_append( $order_xml, 'InternalNotes', implode( ' | ', Order_Util::get_order_notes( $order ) ) );
+			$this->xml_append( $order_xml, 'CustomerNotes', html_entity_decode( $order->get_customer_note(), ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
+
+			$order_notes = Order_Util::get_order_notes( $order );
+			$this->xml_append( $order_xml, 'InternalNotes', implode( ' | ', $order_notes['private'] ) );
 
 			// Maybe append the gift and gift message XML element.
 			if ( class_exists( 'WooCommerce\Shipping\ShipStation\Checkout' ) && $order->get_meta( Checkout::get_block_prefixed_meta_key( 'is_gift' ) ) ) {
@@ -288,7 +290,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 				$gift_message = $order->get_meta( Checkout::get_block_prefixed_meta_key( 'gift_message' ) );
 
 				if ( ! empty( $gift_message ) ) {
-					$this->xml_append( $order_xml, 'GiftMessage', wp_specialchars_decode( $gift_message ) );
+					$this->xml_append( $order_xml, 'GiftMessage', html_entity_decode( $gift_message, ENT_QUOTES | ENT_HTML5, 'UTF-8' ) );
 				}
 			}
 
