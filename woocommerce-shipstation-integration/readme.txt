@@ -7,7 +7,7 @@ WC tested up to: 10.7
 WC requires at least: 10.5
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.0.2
+Stable tag: 5.0.3
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,11 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.3 - 2026-04-27 =
+* Add   - Experimental WPCOM-brokered transport scaffolding (behind the `WC_SHIPSTATION_WPCOM_TRANSPORT` feature flag). Adds a "WordPress.com Connection" settings section that lets stores connect to WordPress.com via the Jetpack Connection package. No traffic is routed over the new channel yet.
+* Fix   - Avoid fatal error in REST shipnotify when an order line item references a deleted product.
+* Fix   - Enable WooCommerce consumer key/secret authentication for REST API requests made via the `?rest_route=` query parameter (plain permalink fallback).
 
 = 5.0.2 - 2026-04-17 =
 * Fix   - Decode HTML entities in order customer notes, internal notes, and gift messages before export so special characters (e.g. &, £, ') appear correctly in ShipStation rather than as HTML entities.

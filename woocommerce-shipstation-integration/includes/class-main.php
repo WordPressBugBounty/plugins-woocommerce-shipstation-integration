@@ -30,6 +30,13 @@ class Main {
 	protected static ?Main $instance = null;
 
 	/**
+	 * WPCOM connection facade. Null until the feature flag enables it.
+	 *
+	 * @var WPCOM_Connection|null
+	 */
+	protected ?WPCOM_Connection $wpcom_connection = null;
+
+	/**
 	 * Main Websparks People Singleton.
 	 *
 	 * Ensures only one instance is loaded or can be loaded.
@@ -84,11 +91,35 @@ class Main {
 		}
 
 		$this->load_files();
+		$this->maybe_init_wpcom_connection();
 
 		add_action( 'before_woocommerce_init', array( $this, 'before_woocommerce_init' ) );
 		add_action( 'woocommerce_init', array( $this, 'load_rest_api' ) );
 
 		add_filter( 'woocommerce_shipping_methods', array( $this, 'register_shipping_methods' ) );
+	}
+
+	/**
+	 * Bootstrap the WPCOM/Jetpack connection when the feature flag is on.
+	 *
+	 * @return void
+	 */
+	protected function maybe_init_wpcom_connection(): void {
+		if ( ! Features::is_wpcom_transport_enabled() ) {
+			return;
+		}
+
+		$this->wpcom_connection = new WPCOM_Connection();
+		$this->wpcom_connection->bootstrap();
+	}
+
+	/**
+	 * WPCOM connection facade accessor.
+	 *
+	 * @return WPCOM_Connection|null Null when the feature flag is off.
+	 */
+	public function get_wpcom_connection(): ?WPCOM_Connection {
+		return $this->wpcom_connection;
 	}
 
 	/**
@@ -108,6 +139,7 @@ class Main {
 	public function load_files() {
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-features.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-order-util.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-wpcom-connection.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-auth-controller.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-logger.php';

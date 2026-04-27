@@ -19,6 +19,7 @@ use WC_Order_Item_Coupon;
 use WC_Order_Item_Product;
 use WC_Order_Item_Shipping;
 use WC_Order_Item_Tax;
+use WC_Product;
 use WC_Tax;
 use WC_ShipStation_Integration;
 use WooCommerce\Shipping\ShipStation\Main;
@@ -1607,10 +1608,12 @@ class Orders_Controller extends API_Controller {
 				$order_item             = $order->get_item( $saved_item['line_item_id'] );
 
 				if ( $order_item instanceof WC_Order_Item_Product ) {
-					$order_item_product        = $order_item->get_product();
 					$saved_item['description'] = $order_item->get_name();
-					$saved_item['sku']         = $order_item_product->get_sku();
-					$saved_item['product_id']  = $order_item->get_id();
+					$saved_item['product_id']  = $order_item->get_product_id();
+					$order_item_product        = $order_item->get_product();
+					$saved_item['sku']         = $order_item_product instanceof WC_Product
+						? $order_item_product->get_sku()
+						: '';
 				}
 
 				$saved_items[] = $saved_item;

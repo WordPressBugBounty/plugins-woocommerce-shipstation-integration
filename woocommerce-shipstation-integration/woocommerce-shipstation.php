@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ShipStation for WooCommerce
  * Plugin URI: https://woocommerce.com/products/shipstation-integration/
- * Version: 5.0.2
+ * Version: 5.0.3
  * Description: Power your entire shipping operation from one platform.
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
@@ -39,7 +39,13 @@ if ( ! defined( 'WC_SHIPSTATION_PLUGIN_URL' ) ) {
 	define( 'WC_SHIPSTATION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 }
 
-define( 'WC_SHIPSTATION_VERSION', '5.0.2' ); // WRCS: DEFINED_VERSION.
+define( 'WC_SHIPSTATION_VERSION', '5.0.3' ); // WRCS: DEFINED_VERSION.
+
+// Composer + Jetpack autoloader. Ships with the production zip; may be absent in
+// dev checkouts where `composer install` has not been run.
+if ( file_exists( WC_SHIPSTATION_ABSPATH . 'vendor/autoload_packages.php' ) ) {
+	require_once WC_SHIPSTATION_ABSPATH . 'vendor/autoload_packages.php';
+}
 
 require_once WC_SHIPSTATION_ABSPATH . 'includes/class-main.php';
 
