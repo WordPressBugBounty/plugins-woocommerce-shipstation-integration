@@ -7,7 +7,7 @@ WC tested up to: 10.7
 WC requires at least: 10.5
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.0.3
+Stable tag: 5.0.4
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.4 - 2026-05-05 =
+* Fix   - Prevent the "exported to ShipStation" marker from bumping the order's modified date, so ShipStation's incremental `modified_after` polls no longer re-fetch orders it already received.
+* Tweak - Enhance REST-API `/orders` endpoint performance.
 
 = 5.0.3 - 2026-04-27 =
 * Add   - Experimental WPCOM-brokered transport scaffolding (behind the `WC_SHIPSTATION_WPCOM_TRANSPORT` feature flag). Adds a "WordPress.com Connection" settings section that lets stores connect to WordPress.com via the Jetpack Connection package. No traffic is routed over the new channel yet.

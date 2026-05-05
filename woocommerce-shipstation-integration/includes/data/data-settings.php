@@ -5,6 +5,8 @@
  * @package WC_ShipStation
  */
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- File is included inside WC_ShipStation_Integration::init_form_fields() (see class-wc-shipstation-integration.php:467); these variables are method-scoped at runtime, not globals.
+
 use Automattic\WooCommerce\Enums\OrderInternalStatus;
 use WooCommerce\Shipping\ShipStation\Order_Util;
 use WooCommerce\Shipping\ShipStation\Auth_Controller;
@@ -140,15 +142,15 @@ if ( Features::is_wpcom_transport_enabled() ) {
 	if ( null === $connection ) {
 		$button_html = '<p>' . esc_html__( 'Jetpack connection package is unavailable. Reinstall plugin dependencies to enable this feature.', 'woocommerce-shipstation-integration' ) . '</p>';
 	} elseif ( $connection->is_connected() ) {
-		$blog_id     = $connection->get_blog_id();
-		$action_url  = wp_nonce_url(
+		$wpcom_blog_id = $connection->get_blog_id();
+		$action_url    = wp_nonce_url(
 			admin_url( 'admin-post.php?action=shipstation_wpcom_disconnect' ),
 			'shipstation_wpcom_disconnect'
 		);
-		$button_html = sprintf(
+		$button_html   = sprintf(
 			'<p><strong>%s</strong> %s</p><p><a href="%s" class="button">%s</a></p>',
 			esc_html__( 'Connected to WordPress.com.', 'woocommerce-shipstation-integration' ),
-			$blog_id ? esc_html( sprintf( /* translators: %d: WordPress.com blog id */ __( 'Blog ID: %d', 'woocommerce-shipstation-integration' ), $blog_id ) ) : '',
+			$wpcom_blog_id ? esc_html( sprintf( /* translators: %d: WordPress.com blog id */ __( 'Blog ID: %d', 'woocommerce-shipstation-integration' ), $wpcom_blog_id ) ) : '',
 			esc_url( $action_url ),
 			esc_html__( 'Disconnect from WordPress.com', 'woocommerce-shipstation-integration' )
 		);

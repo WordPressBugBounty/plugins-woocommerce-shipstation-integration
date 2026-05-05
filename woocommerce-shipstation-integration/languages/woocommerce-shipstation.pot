@@ -2,10 +2,10 @@
 # This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: ShipStation for WooCommerce 5.0.3\n"
+"Project-Id-Version: ShipStation for WooCommerce 5.0.4\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/woocommerce-shipstation\n"
-"POT-Creation-Date: 2026-04-27 14:52:04+00:00\n"
+"POT-Creation-Date: 2026-05-05 09:32:40+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -18,22 +18,17 @@ msgstr ""
 msgid "Invalid start_date or end_date format."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:170
-#: includes/api/rest/class-orders-controller.php:458
+#: includes/api/requests/class-wc-shipstation-api-export.php:171
+#: includes/api/rest/class-orders-controller.php:469
 #. translators: 1: order id
 msgid "Order %s can not be found."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:482
+#: includes/api/requests/class-wc-shipstation-api-export.php:483
 msgid "Total Discount"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:511
-#: includes/api/rest/class-orders-controller.php:466
-msgid "Order has been exported to Shipstation"
-msgstr ""
-
-#: includes/api/requests/class-wc-shipstation-api-export.php:523
+#: includes/api/requests/class-wc-shipstation-api-export.php:520
 #. translators: 1: total count
 msgid "Exported %s orders"
 msgstr ""
@@ -71,43 +66,43 @@ msgid "Invalid order ID: %s"
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:175
-#: includes/api/rest/class-orders-controller.php:1621
+#: includes/api/rest/class-orders-controller.php:1718
 msgid "ShipNotify Item: "
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:188
-#: includes/api/rest/class-orders-controller.php:1706
+#: includes/api/rest/class-orders-controller.php:1803
 #. translators: 1: item name
 msgid "Item %s is not shippable product. Skipping."
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:206
-#: includes/api/rest/class-orders-controller.php:1722
+#: includes/api/rest/class-orders-controller.php:1819
 #. translators: 1) shipped items 2) carrier's name 3) shipped date, 4) tracking
 #. number
 msgid "%1$s shipped via %2$s on %3$s with tracking number %4$s."
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:222
-#: includes/api/rest/class-orders-controller.php:1738
+#: includes/api/rest/class-orders-controller.php:1835
 #. translators: 1) number of shipped items 2) total shipped items 3) order ID
 msgid "Shipped %1$d out of %2$d items in order %3$s"
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:238
-#: includes/api/rest/class-orders-controller.php:1753
+#: includes/api/rest/class-orders-controller.php:1850
 #. translators: 1) carrier's name 2) shipped date, 3) tracking number
 msgid "Items shipped via %1$s on %2$s with tracking number %3$s (Shipstation)."
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:245
-#: includes/api/rest/class-orders-controller.php:1760
+#: includes/api/rest/class-orders-controller.php:1857
 #. translators: 1: order id
 msgid "No items found - shipping entire order %d."
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:347
-#: includes/api/rest/class-orders-controller.php:1863
+#: includes/api/rest/class-orders-controller.php:1960
 #. translators: 1) order ID 2) shipment status
 msgid "Updated order %1$s to status %2$s"
 msgstr ""
@@ -193,62 +188,62 @@ msgstr ""
 msgid "Error retrieving orders."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:495
+#: includes/api/rest/class-orders-controller.php:571
 #. translators: 1: order id, 2: WC order status, 3: shipstation order status.
 msgid ""
 "Order %1$s has an unmapped WooCommerce status (%2$s). Defaulting to "
 "ShipStation status \"%3$s\". Please review your status mappings."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:682
+#: includes/api/rest/class-orders-controller.php:758
 #. translators: %1$s is a coupon code.
 msgid "Discount from coupon: %1$s"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:706
+#: includes/api/rest/class-orders-controller.php:782
 msgid "Additional Discount"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1315
+#: includes/api/rest/class-orders-controller.php:1412
 msgid "Tax"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1528
+#: includes/api/rest/class-orders-controller.php:1625
 msgid "Notification ID is empty for this notification: "
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1536
+#: includes/api/rest/class-orders-controller.php:1633
 msgid "Empty order ID or items"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1540
+#: includes/api/rest/class-orders-controller.php:1637
 #. translators: %1$s is the notification id.
 msgid "Notification ID: %1$s doesnt have order ID or items."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1549
+#: includes/api/rest/class-orders-controller.php:1646
 msgid "Order ID is not numeric"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1553
+#: includes/api/rest/class-orders-controller.php:1650
 #. translators: %1$s is the order id, %2$d is the notification id.
 msgid "Order ID: %1$d from notification ID: %2$s is not numeric."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1573
+#: includes/api/rest/class-orders-controller.php:1670
 msgid "Order not found"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1579
+#: includes/api/rest/class-orders-controller.php:1676
 #. translators: %1$d is the order ID, %2$s is the order number.
 msgid "Order ID: %1$d or Order number: %2$s cannot be found."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1594
+#: includes/api/rest/class-orders-controller.php:1691
 msgid "Skipped this item because doesnt have description and quantity: "
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1774
+#: includes/api/rest/class-orders-controller.php:1871
 msgid "You're using Shipment Tracking < 1.4.0. Please update!"
 msgstr ""
 
@@ -398,20 +393,24 @@ msgstr ""
 msgid "Docs"
 msgstr ""
 
-#: includes/class-wc-shipstation-api.php:71
+#: includes/class-order-util.php:527
+msgid "Order has been exported to Shipstation"
+msgstr ""
+
+#: includes/class-wc-shipstation-api.php:74
 msgid "Authentication key is required!"
 msgstr ""
 
-#: includes/class-wc-shipstation-api.php:75
+#: includes/class-wc-shipstation-api.php:78
 msgid "Invalid authentication key"
 msgstr ""
 
-#: includes/class-wc-shipstation-api.php:83
-#: includes/class-wc-shipstation-api.php:100
+#: includes/class-wc-shipstation-api.php:86
+#: includes/class-wc-shipstation-api.php:103
 msgid "Invalid request"
 msgstr ""
 
-#: includes/class-wc-shipstation-api.php:96
+#: includes/class-wc-shipstation-api.php:99
 #. translators: 1: query string
 msgid "Input params: %s"
 msgstr ""
@@ -523,177 +522,177 @@ msgstr ""
 msgid "Security check failed."
 msgstr ""
 
-#: includes/data/data-settings.php:22
+#: includes/data/data-settings.php:24
 msgid "Authentication Key"
 msgstr ""
 
-#: includes/data/data-settings.php:26
+#: includes/data/data-settings.php:28
 msgid ""
 "This is the <code>Auth Key</code> you set in ShipStation and allows "
 "ShipStation to communicate with your store."
 msgstr ""
 
-#: includes/data/data-settings.php:34
+#: includes/data/data-settings.php:36
 msgid "Export Order Statuses&hellip;"
 msgstr ""
 
-#: includes/data/data-settings.php:39
+#: includes/data/data-settings.php:41
 msgid "Define the order statuses you wish to export to ShipStation."
 msgstr ""
 
-#: includes/data/data-settings.php:42
+#: includes/data/data-settings.php:44
 msgid "Select Order Statuses"
 msgstr ""
 
-#: includes/data/data-settings.php:46
+#: includes/data/data-settings.php:48
 msgid "Shipped Order Status&hellip;"
 msgstr ""
 
-#: includes/data/data-settings.php:49
+#: includes/data/data-settings.php:51
 msgid ""
 "Define the order status you wish to update to once an order has been "
 "shipping via ShipStation. By default this is \"Completed\"."
 msgstr ""
 
-#: includes/data/data-settings.php:54
+#: includes/data/data-settings.php:56
 msgid "API Mode"
 msgstr ""
 
-#: includes/data/data-settings.php:56
+#: includes/data/data-settings.php:58
 msgid "Current API mode."
 msgstr ""
 
-#: includes/data/data-settings.php:64
+#: includes/data/data-settings.php:66
 msgid "Status Mapping Mode"
 msgstr ""
 
-#: includes/data/data-settings.php:67
+#: includes/data/data-settings.php:69
 msgid "API"
 msgstr ""
 
-#: includes/data/data-settings.php:68
+#: includes/data/data-settings.php:70
 msgid "Plugin"
 msgstr ""
 
-#: includes/data/data-settings.php:70
+#: includes/data/data-settings.php:72
 msgid "Define how the order status will be mapped."
 msgstr ""
 
-#: includes/data/data-settings.php:75
+#: includes/data/data-settings.php:77
 msgid "Awaiting Payment"
 msgstr ""
 
-#: includes/data/data-settings.php:79
+#: includes/data/data-settings.php:81
 msgid ""
 "Define the order status you wish to map for ShipStation \"AwaitingPayment\" "
 "status. By default this is \"pending\"."
 msgstr ""
 
-#: includes/data/data-settings.php:84
+#: includes/data/data-settings.php:86
 msgid "Awaiting Shipment"
 msgstr ""
 
-#: includes/data/data-settings.php:88
+#: includes/data/data-settings.php:90
 msgid ""
 "Define the order status you wish to map for ShipStation "
 "\"AwaitingShipment\" status. By default this is \"processing\"."
 msgstr ""
 
-#: includes/data/data-settings.php:93
+#: includes/data/data-settings.php:95
 msgid "OnHold"
 msgstr ""
 
-#: includes/data/data-settings.php:97
+#: includes/data/data-settings.php:99
 msgid ""
 "Define the order status you wish to map for ShipStation \"OnHold\" status. "
 "By default this is \"on-hold\"."
 msgstr ""
 
-#: includes/data/data-settings.php:102
+#: includes/data/data-settings.php:104
 msgid "Completed"
 msgstr ""
 
-#: includes/data/data-settings.php:106
+#: includes/data/data-settings.php:108
 msgid ""
 "Define the order status you wish to map for ShipStation \"Completed\" "
 "status. By default this is \"completed\"."
 msgstr ""
 
-#: includes/data/data-settings.php:111
+#: includes/data/data-settings.php:113
 msgid "Cancelled"
 msgstr ""
 
-#: includes/data/data-settings.php:115
+#: includes/data/data-settings.php:117
 msgid ""
 "Define the order status you wish to map for ShipStation \"Cancelled\" "
 "status. By default this is \"cancelled\"."
 msgstr ""
 
-#: includes/data/data-settings.php:120
+#: includes/data/data-settings.php:122
 msgid "Gift"
 msgstr ""
 
-#: includes/data/data-settings.php:121
+#: includes/data/data-settings.php:123
 msgid "Enable Gift options at checkout page"
 msgstr ""
 
-#: includes/data/data-settings.php:123
+#: includes/data/data-settings.php:125
 msgid ""
 "Allow customer to mark their order as a gift and include a personalized "
 "message."
 msgstr ""
 
-#: includes/data/data-settings.php:124
+#: includes/data/data-settings.php:126
 msgid "Enable gift fields on the checkout page."
 msgstr ""
 
-#: includes/data/data-settings.php:128
+#: includes/data/data-settings.php:130
 msgid "Logging"
 msgstr ""
 
-#: includes/data/data-settings.php:129
+#: includes/data/data-settings.php:131
 msgid "Enable Logging"
 msgstr ""
 
-#: includes/data/data-settings.php:131
+#: includes/data/data-settings.php:133
 msgid ""
 "Note: this may log personal information. We recommend using this for "
 "debugging purposes only and deleting the logs when finished."
 msgstr ""
 
-#: includes/data/data-settings.php:132
+#: includes/data/data-settings.php:134
 msgid "Log all API interactions."
 msgstr ""
 
-#: includes/data/data-settings.php:141
+#: includes/data/data-settings.php:143
 msgid ""
 "Jetpack connection package is unavailable. Reinstall plugin dependencies to "
 "enable this feature."
 msgstr ""
 
-#: includes/data/data-settings.php:150
+#: includes/data/data-settings.php:152
 msgid "Connected to WordPress.com."
 msgstr ""
 
-#: includes/data/data-settings.php:151
+#: includes/data/data-settings.php:153
 #. translators: %d: WordPress.com blog id
 msgid "Blog ID: %d"
 msgstr ""
 
-#: includes/data/data-settings.php:153
+#: includes/data/data-settings.php:155
 msgid "Disconnect from WordPress.com"
 msgstr ""
 
-#: includes/data/data-settings.php:163
+#: includes/data/data-settings.php:165
 #: vendor/automattic/jetpack-connection/src/class-connection-notice.php:202
 msgid "Connect to WordPress.com"
 msgstr ""
 
-#: includes/data/data-settings.php:168
+#: includes/data/data-settings.php:170
 msgid "WordPress.com Connection"
 msgstr ""
 
-#: includes/data/data-settings.php:170
+#: includes/data/data-settings.php:172
 msgid ""
 "Connecting to WordPress.com lets ShipStation reach your store through the "
 "Jetpack channel, bypassing firewall and security-plugin blocks that can "

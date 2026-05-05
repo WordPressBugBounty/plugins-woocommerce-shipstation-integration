@@ -431,6 +431,7 @@ class Orders_Controller extends API_Controller {
 			return new WP_REST_Response( $sales_orders_data, 200 );
 		}
 
+		$ids_to_fetch = array();
 		foreach ( $results->orders as $order_id ) {
 			/**
 			 * Allow third party to skip the export of certain order ID.
@@ -440,10 +441,17 @@ class Orders_Controller extends API_Controller {
 			 *
 			 * @since 4.1.42
 			 */
-			if ( ! apply_filters( 'woocommerce_shipstation_export_order', true, $order_id ) ) {
-				continue;
+			if ( apply_filters( 'woocommerce_shipstation_export_order', true, $order_id ) ) {
+				$ids_to_fetch[] = (int) $order_id;
 			}
+		}
 
+		$orders_by_id = $this->get_orders_by_ids( $ids_to_fetch );
+		$this->prime_batch_caches( $ids_to_fetch );
+		Order_Util::prime_products_for_batch( $orders_by_id );
+
+		$orders_to_mark = array();
+		foreach ( $ids_to_fetch as $order_id ) {
 			/**
 			 * Allow third party to change the order object.
 			 *
@@ -451,7 +459,10 @@ class Orders_Controller extends API_Controller {
 			 *
 			 * @since 4.1.42
 			 */
-			$order = apply_filters( 'woocommerce_shipstation_export_get_order', wc_get_order( $order_id ) );
+			$order = apply_filters(
+				'woocommerce_shipstation_export_get_order',
+				$orders_by_id[ $order_id ] ?? false
+			);
 
 			if ( ! Order_Util::is_wc_order( $order ) ) {
 				/* translators: 1: order id */
@@ -460,16 +471,81 @@ class Orders_Controller extends API_Controller {
 			}
 
 			$sales_orders_data['sales_orders'][] = $this->get_order_data( $order );
+			$orders_to_mark[]                    = $order;
+		}
 
-			// Add order note to indicate it has been exported to Shipstation.
-			if ( 'yes' !== $order->get_meta( '_shipstation_exported', true ) ) {
-				$order->add_order_note( __( 'Order has been exported to Shipstation', 'woocommerce-shipstation-integration' ) );
-				$order->update_meta_data( '_shipstation_exported', 'yes' );
-				$order->save_meta_data();
+		Order_Util::mark_orders_exported_bulk( $orders_to_mark );
+
+		return new WP_REST_Response( $sales_orders_data, 200 );
+	}
+
+	/**
+	 * Bulk-fetch orders and return them indexed by ID.
+	 *
+	 * This is intentionally a second query. The upstream `wc_get_orders()` call in
+	 * `get_orders()` uses `'return' => 'ids'` so it can retrieve pagination metadata
+	 * (`total`, `max_num_pages`) without instantiating full order objects. After that
+	 * cheap ID fetch, the `woocommerce_shipstation_export_order` filter runs per-ID and
+	 * may remove some orders from the set. This method then bulk-hydrates only the
+	 * orders that survived the filter, so no work is done for skipped orders.
+	 *
+	 * Passing all IDs at once to `wc_get_orders( [ 'post__in' => $ids ] )` is more
+	 * efficient than N individual `wc_get_order()` calls on both storage backends:
+	 * under HPOS it routes through `OrdersTableDataStore::read_multiple()`, which
+	 * batches the orders/addresses/meta table queries for the whole set; under the
+	 * legacy CPT backend, the underlying `WP_Query( post__in )` primes the WordPress
+	 * post cache for every ID in one round trip so the per-order `read()` calls that
+	 * follow are cache hits.
+	 *
+	 * @since 5.0.4
+	 *
+	 * @param int[] $order_ids Order IDs to fetch.
+	 * @return array<int, WC_Order> Order objects indexed by ID.
+	 */
+	private function get_orders_by_ids( array $order_ids ): array {
+		if ( empty( $order_ids ) ) {
+			return array();
+		}
+
+		$orders = wc_get_orders(
+			array(
+				'type'     => 'shop_order',
+				'post__in' => $order_ids,
+				'limit'    => -1,
+			)
+		);
+
+		$indexed = array();
+		foreach ( (array) $orders as $order ) {
+			if ( Order_Util::is_wc_order( $order ) ) {
+				$indexed[ $order->get_id() ] = $order;
 			}
 		}
 
-		return new WP_REST_Response( $sales_orders_data, 200 );
+		return $indexed;
+	}
+
+	/**
+	 * Warm caches for the current batch of orders before the payload pass.
+	 *
+	 * Primes `wc_order_items` and `wc_order_itemmeta` for every order in the batch
+	 * in two queries. HPOS inherits `read_items()` from the CPT store but does not
+	 * trigger its bulk priming helper, so without this the first `$order->get_items()`
+	 * on each order issues a separate SELECT.
+	 *
+	 * @since 5.0.4
+	 *
+	 * @param int[] $order_ids Orders IDs.
+	 * @return void
+	 */
+	private function prime_batch_caches( array $order_ids ): void {
+		if ( empty( $order_ids ) ) {
+			return;
+		}
+
+		Order_Util::prime_order_items_for_batch( $order_ids );
+		Order_Util::prime_refunds_for_batch( $order_ids );
+		Order_Util::prime_order_notes_for_batch( $order_ids );
 	}
 
 	/**
@@ -566,7 +642,7 @@ class Orders_Controller extends API_Controller {
 	 * @return array
 	 */
 	public function get_buyer( WC_Order $order ): array {
-		$buyer = [];
+		$buyer = array();
 		$user  = null;
 
 		$name = trim( $order->get_billing_first_name() . ' ' . $order->get_billing_last_name() );
@@ -830,7 +906,7 @@ class Orders_Controller extends API_Controller {
 	public function get_requested_fulfillments( WC_Order $order, array $extra_args ): array {
 		$fulfillments      = array();
 		$fulfillment_items = array();
-		$order_items       = $order->get_items() + $order->get_items( 'fee' );
+		$order_items       = $order->get_items( array( 'line_item', 'fee' ) );
 
 		foreach ( $order_items as $item ) {
 			$fulfillment_item = $this->get_fulfillment_item( $item, $order, 0, $extra_args );
@@ -985,7 +1061,7 @@ class Orders_Controller extends API_Controller {
 			// Maybe convert item total using per-order exchange rate.
 			$rate = $this->get_exchange_rate();
 			if ( 1.00 !== $rate ) {
-				$unit_price        = floatval( $unit_price * $rate );
+				$unit_price = floatval( $unit_price * $rate );
 			}
 		}
 
@@ -1001,6 +1077,9 @@ class Orders_Controller extends API_Controller {
 				'modified_date_time' => $this->get_shipstation_date_format( $order->get_date_modified() ),
 			),
 			function ( $value ) {
+				// Loose comparison is intentional: `$unit_price` and `$quantity` arrive as float `0.0` for free items,
+				// and `0 === 0.0` is false. We want to keep numeric zero across int/float/string forms.
+				// phpcs:ignore Universal.Operators.StrictComparisons.LooseEqual
 				return ! empty( $value ) || ( is_numeric( $value ) && 0 == $value );
 			}
 		);
@@ -1037,6 +1116,15 @@ class Orders_Controller extends API_Controller {
 				$qty += $refunded_item->get_quantity();
 			}
 
+			/**
+			 * Filters the return status for a refund.
+			 *
+			 * @since 5.0.0
+			 *
+			 * @param string          $status The return status.
+			 * @param WC_Order_Refund $refund The refund object.
+			 * @param WC_Order        $order  The order object.
+			 */
 			$status      = apply_filters( 'woocommerce_shipstation_return_status', ucwords( $refund->get_status() ), $refund, $order );
 			$refund_args = $refund->get_meta( '_wc_shipstation_refund_args', true );
 			$return_data = array(
@@ -1046,6 +1134,15 @@ class Orders_Controller extends API_Controller {
 				'total_quantity'     => abs( $qty ),
 				'currency'           => $this->get_currency_code(),
 				'authorization'      => array(
+					/**
+					 * Filters whether the return is approved.
+					 *
+					 * @since 5.0.0
+					 *
+					 * @param bool            $is_approved Whether the return is approved.
+					 * @param WC_Order_Refund $refund      The refund object.
+					 * @param WC_Order        $order       The order object.
+					 */
 					'is_approved' => apply_filters( 'woocommerce_shipstation_return_is_approved', true, $refund, $order ),
 				),
 				'refunds'            => $this->get_refund_data( $refund ),
@@ -1964,7 +2061,15 @@ class Orders_Controller extends API_Controller {
 		$main_instance = Main::instance();
 		$removed       = remove_action( 'woocommerce_api_wc_shipstation', array( $main_instance, 'load_api' ) );
 
-		do_action( 'woocommerce_api_wc_shipstation' );
+		/**
+		 * Fires the legacy WooCommerce ShipStation API action.
+		 *
+		 * Ensures third-party hooks registered on the XML API path are
+		 * also available when the REST API is used.
+		 *
+		 * @since 5.0.0
+		 */
+		do_action( 'woocommerce_api_wc_shipstation' ); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Legacy WC API hook; part of the /?wc-api=wc_shipstation routing contract. Renaming breaks Product Bundles and third-party compatibility (commit 3da4326).
 
 		if ( $removed ) {
 			add_action( 'woocommerce_api_wc_shipstation', array( $main_instance, 'load_api' ) );

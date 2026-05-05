@@ -136,7 +136,8 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 
 		$max_results = $total_orders_to_export->total;
 
-		$orders_xml = $xml->createElement( 'Orders' );
+		$orders_xml     = $xml->createElement( 'Orders' );
+		$orders_to_mark = array();
 
 		/**
 		 * Loop through each order ID and process for export.
@@ -505,14 +506,10 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$orders_xml->appendChild( apply_filters( 'woocommerce_shipstation_export_order_xml', $order_xml ) );
 
 			++$exported;
-
-			// Add order note to indicate it has been exported to Shipstation.
-			if ( 'yes' !== $order->get_meta( '_shipstation_exported', true ) ) {
-				$order->add_order_note( __( 'Order has been exported to Shipstation', 'woocommerce-shipstation-integration' ) );
-				$order->update_meta_data( '_shipstation_exported', 'yes' );
-				$order->save_meta_data();
-			}
+			$orders_to_mark[] = $order;
 		}
+
+		Order_Util::mark_orders_exported_bulk( $orders_to_mark );
 
 		$orders_xml->setAttribute( 'page', $page );
 		$orders_xml->setAttribute( 'pages', ceil( $max_results / WC_SHIPSTATION_EXPORT_LIMIT ) );
