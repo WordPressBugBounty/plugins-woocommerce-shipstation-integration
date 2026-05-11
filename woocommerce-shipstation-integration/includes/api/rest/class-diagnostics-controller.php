@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
+use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -64,35 +65,23 @@ class Diagnostics_Controller extends API_Controller {
 	}
 
 	/**
-	 * REST API permission callback.
+	 * REST API permission callback for GET /diagnostics/details.
 	 *
-	 * @return boolean
+	 * @param WP_REST_Request $request Current REST request.
+	 * @return bool|WP_Error See API_Controller::check_namespace_permission().
 	 */
-	public function check_get_permission(): bool {
-		/**
-		 * Filters whether the current user has permissions to manage WooCommerce.
-		 *
-		 * @since 1.0.0
-		 *
-		 * @param bool $can_manage_wc Whether the user can manage WooCommerce.
-		 */
-		return apply_filters( 'wc_shipstation_user_can_manage_wc', wc_rest_check_manager_permissions( 'system_status', 'read' ) );
+	public function check_get_permission( WP_REST_Request $request ) {
+		return $this->check_namespace_permission( $request, 'system_status', 'read' );
 	}
 
 	/**
-	 * REST API permission callback.
+	 * REST API permission callback for POST /diagnostics/validate.
 	 *
-	 * @return boolean
+	 * @param WP_REST_Request $request Current REST request.
+	 * @return bool|WP_Error See API_Controller::check_namespace_permission().
 	 */
-	public function check_creatable_permission(): bool {
-		/**
-		 * Filters whether the current user has permissions to manage WooCommerce.
-		 *
-		 * @since 1.0.0
-		 *
-		 * @param bool $can_manage_wc Whether the user can manage WooCommerce.
-		 */
-		return apply_filters( 'wc_shipstation_user_can_manage_wc', wc_rest_check_manager_permissions( 'system_status', 'create' ) );
+	public function check_creatable_permission( WP_REST_Request $request ) {
+		return $this->check_namespace_permission( $request, 'system_status', 'create' );
 	}
 
 	/**

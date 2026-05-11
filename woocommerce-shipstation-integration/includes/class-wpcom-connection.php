@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use Automattic\Jetpack\Config as Jetpack_Config;
 use Automattic\Jetpack\Connection\Manager as Jetpack_Connection_Manager;
+use Automattic\Jetpack\Connection\Rest_Authentication as Jetpack_Rest_Authentication;
 use Jetpack_Options;
 
 /**
@@ -84,6 +85,12 @@ class WPCOM_Connection {
 				'name' => self::NAME,
 			)
 		);
+
+		// Register the determine_current_user / rest_authentication_errors filters
+		// that verify Jetpack-signed REST requests. No-op for requests without
+		// `?_for=jetpack` and a token+signature, so it's safe to always init when
+		// the WPCOM transport feature flag is on.
+		Jetpack_Rest_Authentication::init();
 
 		add_action( 'admin_post_shipstation_wpcom_connect', array( $this, 'handle_connect_action' ) );
 		add_action( 'admin_post_shipstation_wpcom_disconnect', array( $this, 'handle_disconnect_action' ) );

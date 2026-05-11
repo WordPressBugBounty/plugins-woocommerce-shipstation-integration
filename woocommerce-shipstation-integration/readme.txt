@@ -7,7 +7,7 @@ WC tested up to: 10.7
 WC requires at least: 10.5
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.0.4
+Stable tag: 5.0.5
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.5 - 2026-05-11 =
+* Add   - When the WPCOM transport flag is on, the `/wc-shipstation/v1/*` REST namespace requires a WooCommerce Basic Auth credential that matches a row in `woocommerce_api_keys` on every request. Other authentication paths (App Passwords, cookies, Jetpack-signed requests on their own) cannot reach these routes. The lookup is by hashed `consumer_key` against the table, so installs that issued a ShipStation key before the auth modal landed continue to authenticate. With the flag off, the existing `wc_shipstation_user_can_manage_wc` filter remains the sole authority and behaviour matches previous releases.
+* Add   - Auth modal now surfaces the WPCOM proxy URL (`https://public-api.wordpress.com/wpcom/v2/sites/{blog_id}/shipstation`) as the "Site URL" when the WPCOM transport flag is on AND the site is Jetpack-connected, so ShipStation routes traffic through WordPress.com instead of the merchant URL.
 
 = 5.0.4 - 2026-05-05 =
 * Fix   - Prevent the "exported to ShipStation" marker from bumping the order's modified date, so ShipStation's incremental `modified_after` polls no longer re-fetch orders it already received.

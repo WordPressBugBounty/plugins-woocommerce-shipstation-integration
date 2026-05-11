@@ -218,7 +218,7 @@ class Auth_Controller {
 		$api_credentials = $this->maybe_create_api_credentials();
 
 		$data = array(
-			'site_url' => home_url(),
+			'site_url' => $this->get_store_url_for_shipstation(),
 			'auth_key' => WC_ShipStation_Integration::$auth_key,
 		);
 
@@ -228,6 +228,40 @@ class Auth_Controller {
 		}
 
 		return $data;
+	}
+
+	/**
+	 * Resolve the URL the merchant should paste into ShipStation's "Store URL"
+	 * field. With WPCOM transport active and the site Jetpack-connected, that's
+	 * the WPCOM proxy entry point; otherwise it's the merchant's own site URL.
+	 *
+	 * The proxy URL routes ShipStation traffic via WordPress.com (which signs
+	 * each call with the blog token before forwarding to the merchant), so a
+	 * merchant whose site is firewalled / behind a security plugin only needs
+	 * to allowlist `*.wordpress.com` rather than reverse-engineer their host's
+	 * blocking layer. The plugin's REST gate accepts both transports
+	 * identically; the URL surfaced in the modal decides which one ShipStation
+	 * actually uses.
+	 *
+	 * @since 5.0.5
+	 *
+	 * @return string Site or proxy URL, without a trailing slash.
+	 */
+	private function get_store_url_for_shipstation(): string {
+		if ( Features::is_wpcom_transport_enabled() ) {
+			$connection = Main::instance()->get_wpcom_connection();
+			if ( null !== $connection && $connection->is_connected() ) {
+				$blog_id = $connection->get_blog_id();
+				if ( null !== $blog_id ) {
+					return sprintf(
+						'https://public-api.wordpress.com/wpcom/v2/sites/%d/shipstation',
+						$blog_id
+					);
+				}
+			}
+		}
+
+		return home_url();
 	}
 
 	/**
@@ -322,7 +356,7 @@ class Auth_Controller {
 			'consumer_key'    => $new_credentials['consumer_key'],
 			'consumer_secret' => $new_credentials['consumer_secret'],
 			'auth_key'        => WC_ShipStation_Integration::$auth_key,
-			'site_url'        => home_url(),
+			'site_url'        => $this->get_store_url_for_shipstation(),
 		);
 
 		wp_send_json_success( $auth_data );

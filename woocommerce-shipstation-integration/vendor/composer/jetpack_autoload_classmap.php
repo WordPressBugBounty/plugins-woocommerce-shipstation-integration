@@ -366,6 +366,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Diagnostics_Controller_Permission_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Diagnostics_Controller_Permission_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Get_Fulfillment_Items_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Get_Fulfillment_Items_Test.php'
@@ -374,9 +378,21 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Get_Item_Details_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Inventory_Controller_Permission_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Inventory_Controller_Permission_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Permission_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Permission_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Permission_Test_Trait' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Permission_Test_Trait.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Update_Orders_Shipments_Test' => array(
 		'version' => 'dev-trunk',
