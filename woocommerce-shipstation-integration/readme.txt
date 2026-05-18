@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, automattic
 Requires at least: 6.8
 Tested up to: 6.9
-WC tested up to: 10.7
-WC requires at least: 10.5
+WC tested up to: 10.8
+WC requires at least: 10.6
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.0.5
+Stable tag: 5.0.6
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.6 - 2026-05-18 =
+* Fix   - Restore tracking updates from ShipStation when the original items have been replaced before shipping.
+* Tweak - WooCommerce 10.8 Compatibility.
 
 = 5.0.5 - 2026-05-11 =
 * Add   - When the WPCOM transport flag is on, the `/wc-shipstation/v1/*` REST namespace requires a WooCommerce Basic Auth credential that matches a row in `woocommerce_api_keys` on every request. Other authentication paths (App Passwords, cookies, Jetpack-signed requests on their own) cannot reach these routes. The lookup is by hashed `consumer_key` against the table, so installs that issued a ShipStation key before the auth modal landed continue to authenticate. With the flag off, the existing `wc_shipstation_user_can_manage_wc` filter remains the sole authority and behaviour matches previous releases.

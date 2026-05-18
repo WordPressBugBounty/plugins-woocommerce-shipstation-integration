@@ -1615,17 +1615,17 @@ class Orders_Controller extends API_Controller {
 				continue; // Skip if notification ID is not set.
 			}
 
-			if ( empty( $notification['order_id'] ) || empty( $notification['items'] ) || ! is_array( $notification['items'] ) ) {
+			if ( empty( $notification['order_id'] ) ) {
 				$response[] = array(
 					'notification_id' => $notification['notification_id'],
 					'status'          => 'failure',
-					'failure_reason'  => __( 'Empty order ID or items', 'woocommerce-shipstation-integration' ),
+					'failure_reason'  => __( 'Empty order ID', 'woocommerce-shipstation-integration' ),
 				);
 
 				// translators: %1$s is the notification id.
-				$this->log( sprintf( __( 'Notification ID: %1$s doesnt have order ID or items.', 'woocommerce-shipstation-integration' ), $notification['notification_id'] ) );
+				$this->log( sprintf( __( 'Notification ID: %1$s doesnt have order ID.', 'woocommerce-shipstation-integration' ), $notification['notification_id'] ) );
 
-				continue; // Skip invalid items.
+				continue; // Skip notification without order ID.
 			}
 
 			if ( ! is_numeric( $notification['order_id'] ) ) {
@@ -1675,7 +1675,19 @@ class Orders_Controller extends API_Controller {
 
 			$saved_items = array();
 
-			foreach ( $notification['items'] as $item ) {
+			// Normalize items: ShipStation may omit this field or send an empty list
+			// when items were replaced before shipping. Fall back to an empty array
+			// so process_items() writes the generic tracking note — matching the XML
+			// shipnotify handler's behavior for an empty <Items> element, which also
+			// writes the note without transitioning the order (the XML handler's
+			// "ship entire order" branch only fires on transport-level failures:
+			// empty POST body or missing SimpleXML extension, neither of which has
+			// a JSON analog since malformed REST bodies are rejected upstream).
+			$items_payload = isset( $notification['items'] ) && is_array( $notification['items'] )
+				? $notification['items']
+				: array();
+
+			foreach ( $items_payload as $item ) {
 				if ( empty( $item['description'] ) && empty( $item['quantity'] ) ) {
 					$this->log( __( 'Skipped this item because doesnt have description and quantity: ', 'woocommerce-shipstation-integration' ) . print_r( $item, true ) ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r --- Its needed for logging
 					continue; // Skip if required fields are not set.
@@ -1739,10 +1751,8 @@ class Orders_Controller extends API_Controller {
 				$saved_notification['notes'] = $this->parse_notes( $notification['notes'] );
 			}
 
-			if ( ! empty( $saved_items ) ) {
-				$saved_notification['items'] = $saved_items;
-				$this->process_items( $saved_items, $order, $saved_notification );
-			}
+			$saved_notification['items'] = $saved_items;
+			$this->process_items( $saved_items, $order, $saved_notification );
 
 			$response[] = array(
 				'notification_id' => $notification['notification_id'],

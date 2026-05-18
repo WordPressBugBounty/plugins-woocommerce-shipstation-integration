@@ -143,6 +143,7 @@ class Main {
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-auth-controller.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-logger.php';
+		include_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-options.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-privacy.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-api.php';
 
@@ -197,7 +198,11 @@ class Main {
 		}
 
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/interface-checkout-rates-api-client.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-shipstation-unit-converter.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-invalid-payload-exception.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-payload-validator.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-request-builder.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-response-mapper.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-shipping-method.php';
 
 		$methods['shipstation_checkout_rates'] = Checkout_Rates_Shipping_Method::class;

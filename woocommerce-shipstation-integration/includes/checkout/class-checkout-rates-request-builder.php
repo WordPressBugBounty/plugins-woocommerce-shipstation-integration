@@ -23,6 +23,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Checkout_Rates_Request_Builder {
 
 	/**
+	 * Pre-filter payload snapshots captured during the current build() call.
+	 *
+	 * Used by Checkout_Rates_Payload_Validator to attribute a violation to the
+	 * public filter that introduced it. Reset on every build() call. Recognised
+	 * keys: 'pre_address_type', 'pre_destination', 'pre_item', 'pre_items',
+	 * 'pre_request'.
+	 *
+	 * @var array<string, mixed>
+	 */
+	private array $filter_snapshots = array();
+
+	/**
 	 * Build the rates request payload from a WooCommerce shipping package.
 	 *
 	 * Returns an array under a `rate` key containing `destination` and `items`.
@@ -33,16 +45,26 @@ final class Checkout_Rates_Request_Builder {
 	 * @param array $package WooCommerce shipping package.
 	 *
 	 * @return array Rates request payload.
+	 *
+	 * @throws Checkout_Rates_Invalid_Payload_Exception When the final payload fails validation;
+	 *                                                  callers should treat this as "do not send the request".
 	 */
 	public function build( array $package ) {
 		$destination = isset( $package['destination'] ) ? $package['destination'] : array();
 
+		$this->filter_snapshots = array();
+
+		$built_destination = $this->build_destination( $destination );
+		$built_items       = $this->build_items( $package );
+
 		$payload = array(
 			'rate' => array(
-				'destination' => $this->build_destination( $destination ),
-				'items'       => $this->build_items( $package ),
+				'destination' => $built_destination,
+				'items'       => $built_items,
 			),
 		);
+
+		$this->filter_snapshots['pre_request'] = $payload;
 
 		/**
 		 * Filters the final checkout rates request payload before it is returned.
@@ -52,7 +74,11 @@ final class Checkout_Rates_Request_Builder {
 		 * @param array $payload The outbound checkout rates payload.
 		 * @param array $package The WooCommerce shipping package.
 		 */
-		return apply_filters( 'woocommerce_shipstation_checkout_rates_request', $payload, $package );
+		$payload = apply_filters( 'woocommerce_shipstation_checkout_rates_request', $payload, $package );
+
+		Checkout_Rates_Payload_Validator::validate( $payload, $this->filter_snapshots );
+
+		return $payload;
 	}
 
 	/**
@@ -63,6 +89,8 @@ final class Checkout_Rates_Request_Builder {
 	 * @return array
 	 */
 	private function build_destination( array $destination ) {
+		$this->filter_snapshots['pre_address_type'] = 'residential';
+
 		/**
 		 * Filters the checkout rates address type before it is set.
 		 *
@@ -111,6 +139,8 @@ final class Checkout_Rates_Request_Builder {
 			$built_destination['email'] = $email;
 		}
 
+		$this->filter_snapshots['pre_destination'] = $built_destination;
+
 		/**
 		 * Filters the checkout rates destination data before it is returned.
 		 *
@@ -137,11 +167,12 @@ final class Checkout_Rates_Request_Builder {
 		}
 
 		// Hoist store-wide values out of the loop — they don't vary per line item.
-		$weight_unit    = get_option( 'woocommerce_weight_unit' );
-		$currency       = get_woocommerce_currency();
-		$price_decimals = wc_get_price_decimals();
+		$weight_unit_raw = get_option( 'woocommerce_weight_unit' );
+		$currency        = get_woocommerce_currency();
+		$price_decimals  = wc_get_price_decimals();
 
-		$items = array();
+		$items          = array();
+		$pre_item_items = array();
 		foreach ( $contents as $item ) {
 			$product = isset( $item['data'] ) ? $item['data'] : null;
 			if ( ! $product instanceof WC_Product ) {
@@ -155,9 +186,23 @@ final class Checkout_Rates_Request_Builder {
 			$weight = $product->get_weight();
 
 			if ( '' === $weight || ! is_numeric( $weight ) ) {
-				$weight = '0';
+				$weight_value = '0';
+				$weight_unit  = $weight_unit_raw;
 			} else {
-				$weight = (string) $weight;
+				$converted = ShipStation_Unit_Converter::convert_weight( $weight, (string) $weight_unit_raw );
+				if ( null === $converted ) {
+					Logger::error(
+						sprintf(
+							'Checkout rates: WooCommerce weight unit "%s" is not recognised by the ShipStation unit converter. Accepted units are: oz, lbs, g, kg. Update woocommerce_weight_unit or extend the converter via the woocommerce_shipstation_weight_units filter. Passing raw value to ShipStation — expect a 4xx response.',
+							(string) $weight_unit_raw
+						)
+					);
+					$weight_value = (string) $weight;
+					$weight_unit  = $weight_unit_raw;
+				} else {
+					$weight_value = wc_format_decimal( $converted['value'], 4 );
+					$weight_unit  = $converted['unit'];
+				}
 			}
 
 			// PRD wire shape requires integer quantity; fractional WC quantities
@@ -189,7 +234,7 @@ final class Checkout_Rates_Request_Builder {
 				'sku'      => $product->get_sku(),
 				'quantity' => $quantity,
 				'weight'   => array(
-					'value' => $weight,
+					'value' => $weight_value,
 					'unit'  => $weight_unit,
 				),
 				'price'    => array(
@@ -203,6 +248,8 @@ final class Checkout_Rates_Request_Builder {
 				$line_item['dimensions'] = $dimensions;
 			}
 
+			$pre_item_items[] = $line_item;
+
 			/**
 			 * Filters an individual checkout rates line item before it is added to the items array.
 			 *
@@ -215,6 +262,9 @@ final class Checkout_Rates_Request_Builder {
 			 */
 			$items[] = apply_filters( 'woocommerce_shipstation_checkout_rates_item', $line_item, $package, $product, $item );
 		}
+
+		$this->filter_snapshots['pre_item']  = $pre_item_items;
+		$this->filter_snapshots['pre_items'] = $items;
 
 		/**
 		 * Filters the checkout rates items array before it is returned.
@@ -253,11 +303,32 @@ final class Checkout_Rates_Request_Builder {
 			return array();
 		}
 
+		$dim_unit_raw = (string) get_option( 'woocommerce_dimension_unit' );
+
+		$converted_l = ShipStation_Unit_Converter::convert_dimension( $length, $dim_unit_raw );
+		$converted_w = ShipStation_Unit_Converter::convert_dimension( $width, $dim_unit_raw );
+		$converted_h = ShipStation_Unit_Converter::convert_dimension( $height, $dim_unit_raw );
+
+		if ( null === $converted_l || null === $converted_w || null === $converted_h ) {
+			Logger::error(
+				sprintf(
+					'Checkout rates: WooCommerce dimension unit "%s" is not recognised by the ShipStation unit converter. Accepted units are: in, cm. Update woocommerce_dimension_unit or extend the converter via the woocommerce_shipstation_dimension_units filter. Passing raw values to ShipStation — expect a 4xx response.',
+					$dim_unit_raw
+				)
+			);
+			return array(
+				'length' => wc_format_decimal( $length, 2 ),
+				'width'  => wc_format_decimal( $width, 2 ),
+				'height' => wc_format_decimal( $height, 2 ),
+				'unit'   => $dim_unit_raw,
+			);
+		}
+
 		return array(
-			'length' => wc_format_decimal( $length, 2 ),
-			'width'  => wc_format_decimal( $width, 2 ),
-			'height' => wc_format_decimal( $height, 2 ),
-			'unit'   => get_option( 'woocommerce_dimension_unit' ),
+			'length' => wc_format_decimal( $converted_l['value'], 2 ),
+			'width'  => wc_format_decimal( $converted_w['value'], 2 ),
+			'height' => wc_format_decimal( $converted_h['value'], 2 ),
+			'unit'   => $converted_l['unit'],
 		);
 	}
 
