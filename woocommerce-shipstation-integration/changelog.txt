@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 5.0.7 - 2026-05-20 =
+* Tweak - WordPress 7.0 Compatibility.
+
 = 5.0.6 - 2026-05-18 =
 * Fix   - Restore tracking updates from ShipStation when the original items have been replaced before shipping.
 * Tweak - WooCommerce 10.8 Compatibility.

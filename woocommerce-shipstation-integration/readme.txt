@@ -1,13 +1,13 @@
 === ShipStation for WooCommerce ===
 Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, dwainm, laurendavissmith001, Kloon
 Tags: shipping, woocommerce, automattic
-Requires at least: 6.8
-Tested up to: 6.9
+Requires at least: 6.9
+Tested up to: 7.0
 WC tested up to: 10.8
 WC requires at least: 10.6
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.0.6
+Stable tag: 5.0.7
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.7 - 2026-05-20 =
+* Tweak - WordPress 7.0 Compatibility.
 
 = 5.0.6 - 2026-05-18 =
 * Fix   - Restore tracking updates from ShipStation when the original items have been replaced before shipping.
