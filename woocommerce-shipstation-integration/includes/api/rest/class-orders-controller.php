@@ -333,7 +333,13 @@ class Orders_Controller extends API_Controller {
 		$modified_after = isset( $request_params['modified_after'] ) ? strtotime( $request_params['modified_after'] ) : null;
 		$page           = absint( $request_params['page'] ); // Default to page 1.
 		$per_page       = intval( $request_params['per_page'] ); // Default to 100 items per page.
-		$status_mapping = isset( $request_params['status_mapping'] ) ? $request_params['status_mapping'] : array();
+		// In Manual status-mapping mode the merchant owns the export-status list and
+		// custom statuses ShipStation never sees must still be honored, so the
+		// `status_mapping` request param is ignored — only API mode lets ShipStation
+		// dictate the per-request status filter (SHIPSTN-117).
+		$status_mapping = ( WC_ShipStation_Integration::STATUS_MODE_API === WC_ShipStation_Integration::$status_mode && isset( $request_params['status_mapping'] ) )
+			? $request_params['status_mapping']
+			: array();
 
 		$status_mapping = is_array( $status_mapping ) ? wc_clean( $status_mapping ) : array( wc_clean( $status_mapping ) );
 		$order_statuses = array();

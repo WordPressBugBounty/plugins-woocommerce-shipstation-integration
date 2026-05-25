@@ -63,6 +63,14 @@ class WC_ShipStation_Integration extends WC_Integration {
 	public static $status_mapping = array();
 
 	/**
+	 * Status mapping mode: 'api' (ShipStation-driven) or 'plugin' (merchant-managed).
+	 *
+	 * @since 5.0.8
+	 * @var string
+	 */
+	public static $status_mode = 'api';
+
+	/**
 	 * ShipStation status for awaiting payment.
 	 *
 	 * @var string
@@ -119,6 +127,22 @@ class WC_ShipStation_Integration extends WC_Integration {
 	public const PAID_STATUS = 'Paid';
 
 	/**
+	 * Status mapping mode: ShipStation owns the mappings and overwrites plugin-side values on every poll.
+	 *
+	 * @since 5.0.8
+	 * @var string
+	 */
+	public const STATUS_MODE_API = 'api';
+
+	/**
+	 * Status mapping mode: plugin-side mappings are authoritative and ShipStation polls do not overwrite them.
+	 *
+	 * @since 5.0.8
+	 * @var string
+	 */
+	public const STATUS_MODE_PLUGIN = 'plugin';
+
+	/**
 	 * Order meta keys.
 	 *
 	 * @var array
@@ -134,6 +158,27 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 * @var string
 	 */
 	public static $wc_status_prefix = 'wc-';
+
+	/**
+	 * WooCommerce core order statuses (prefixed with `wc-`).
+	 *
+	 * Used by maybe_save_status_mapping() to distinguish merchant-added custom
+	 * statuses (which ShipStation's account-side mapping UI does not know about)
+	 * from WC core statuses (which it does). Custom statuses are preserved across
+	 * API-mode overwrites so a merchant's custom mapping is not silently dropped
+	 * on the next ShipStation poll.
+	 *
+	 * @var string[]
+	 */
+	private const WC_CORE_ORDER_STATUSES = array(
+		OrderInternalStatus::PENDING,
+		OrderInternalStatus::PROCESSING,
+		OrderInternalStatus::ON_HOLD,
+		OrderInternalStatus::COMPLETED,
+		OrderInternalStatus::CANCELLED,
+		OrderInternalStatus::REFUNDED,
+		OrderInternalStatus::FAILED,
+	);
 
 	/**
 	 * Stores logger class.
@@ -175,6 +220,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 			self::COMPLETED_STATUS         => $this->get_option( self::COMPLETED_STATUS . '_status' ),
 			self::CANCELLED_STATUS         => $this->get_option( self::CANCELLED_STATUS . '_status' ),
 		);
+		self::$status_mode     = $this->get_option( 'status_mode', self::STATUS_MODE_API );
 
 		// Force saved .
 		$this->settings['auth_key'] = self::$auth_key;
@@ -198,6 +244,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 			}
 		}
 
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_settings_scripts' ) );
 		add_filter( 'woocommerce_order_query_args', array( $this, 'add_custom_query_vars_for_hpos' ), 10, 1 );
 		add_filter( 'woocommerce_order_data_store_cpt_get_orders_query', array( $this, 'add_custom_query_vars_for_cpt' ), 10, 2 );
 		add_filter( 'woocommerce_shipstation_diagnostics_controller_get_details', array( $this, 'add_more_diagnostics_details' ), 10 );
@@ -213,6 +260,172 @@ class WC_ShipStation_Integration extends WC_Integration {
 			self::ON_HOLD_STATUS           => $this->get_option( self::ON_HOLD_STATUS . '_status' ),
 			self::COMPLETED_STATUS         => $this->get_option( self::COMPLETED_STATUS . '_status' ),
 			self::CANCELLED_STATUS         => $this->get_option( self::CANCELLED_STATUS . '_status' ),
+		);
+	}
+
+	/**
+	 * Update the status_mode option and keep the static cache in sync.
+	 *
+	 * @since 5.0.8
+	 *
+	 * @param string $value New status mode value. Must be one of self::STATUS_MODE_API or self::STATUS_MODE_PLUGIN.
+	 */
+	public function update_status_mode( $value ) {
+		if ( ! in_array( $value, array( self::STATUS_MODE_API, self::STATUS_MODE_PLUGIN ), true ) ) {
+			Logger::debug(
+				'update_status_mode ignored invalid value',
+				array( 'value' => (string) $value )
+			);
+			return;
+		}
+		$this->update_option( 'status_mode', $value );
+		self::$status_mode = $value;
+	}
+
+	/**
+	 * Build the description string for the export_statuses settings field.
+	 *
+	 * Renders two spans that the settings-page JS keeps in sync as the merchant
+	 * toggles checkboxes:
+	 *
+	 *   #shipstation-excluded-statuses — informational list of statuses that
+	 *                                    will NOT be exported (always shown).
+	 *   #shipstation-unmapped-warning  — error notice listing statuses that ARE
+	 *                                    selected for export but are missing
+	 *                                    from every ShipStation→WC mapping slot.
+	 *                                    Hidden when the list is empty.
+	 *
+	 * @return string HTML description (safe to pass to WC_Settings_API field — rendered via wp_kses_post).
+	 */
+	private function get_export_statuses_description(): string {
+		$export_statuses = (array) $this->get_option( 'export_statuses', array() );
+
+		$prefix     = self::$wc_status_prefix;
+		$prefix_len = strlen( $prefix );
+		$strip      = function ( $s ) use ( $prefix, $prefix_len ) {
+			return ( 0 === strpos( $s, $prefix ) ) ? substr( $s, $prefix_len ) : $s;
+		};
+
+		$export_slugs = array_map( $strip, $export_statuses );
+
+		$excluded_names = array();
+		foreach ( wc_get_order_statuses() as $prefixed_slug => $label ) {
+			$label_slug = $strip( $prefixed_slug );
+			if ( ! in_array( $label_slug, $export_slugs, true ) ) {
+				$excluded_names[] = esc_html( $label_slug );
+			}
+		}
+
+		$base = esc_html__( 'Choose which order statuses to export to ShipStation.', 'woocommerce-shipstation-integration' )
+			. '<br>' . esc_html__( 'Each selected status must also be mapped to a ShipStation status.', 'woocommerce-shipstation-integration' )
+			. '<br>' . esc_html__( 'Mappings are managed below or in your ShipStation account (depending on your Status Mapping Mode).', 'woocommerce-shipstation-integration' );
+
+		if ( empty( $excluded_names ) ) {
+			$span_content = esc_html__( 'All statuses are selected for export.', 'woocommerce-shipstation-integration' );
+		} else {
+			$span_content = esc_html__( 'Excluded from export:', 'woocommerce-shipstation-integration' )
+				. ' <strong>' . implode( ', ', $excluded_names ) . '</strong>';
+		}
+
+		$description = $base . '<br><span id="shipstation-excluded-statuses">' . $span_content . '</span>';
+
+		$unmapped         = $this->get_unmapped_export_statuses();
+		$unmapped_visible = ! empty( $unmapped );
+		$unmapped_html    = $unmapped_visible
+			? sprintf(
+				/* translators: %s: comma-separated list of WC order status names */
+				esc_html__( 'Selected for export but not mapped to a ShipStation status: %s. Map them below so their orders are exported correctly.', 'woocommerce-shipstation-integration' ),
+				'<strong>' . esc_html( implode( ', ', $unmapped ) ) . '</strong>'
+			)
+			: '';
+
+		$description .= '<span id="shipstation-unmapped-warning" class="shipstation-unmapped-warning notice notice-error inline'
+			. ( $unmapped_visible ? ' is-visible' : '' )
+			. '">' . $unmapped_html . '</span>';
+
+		return $description;
+	}
+
+	/**
+	 * Return display names of export_statuses entries missing from every mapping slot.
+	 *
+	 * Returns an empty array when:
+	 *  - api_mode is XML (the mapping UI is hidden in legacy mode), or
+	 *  - status_mode is 'api' (ShipStation owns the mappings — the merchant can't
+	 *    resolve the mismatch from this screen, so surfacing it would be noise), or
+	 *  - every selected export status appears in at least one mapping slot.
+	 *
+	 * Reads option values directly so it works both at field-render time (GET) and
+	 * post-save time (after process_admin_options() has persisted new values).
+	 *
+	 * @return string[] Display-name labels (e.g. "Custom A"), or slugs as fallback.
+	 */
+	private function get_unmapped_export_statuses(): array {
+		if ( 'REST' !== $this->get_option( 'api_mode', 'XML' ) ) {
+			return array();
+		}
+
+		if ( self::STATUS_MODE_API === $this->get_option( 'status_mode', self::STATUS_MODE_API ) ) {
+			return array();
+		}
+
+		$export_statuses = (array) $this->get_option( 'export_statuses', array() );
+		if ( array() === $export_statuses ) {
+			return array();
+		}
+
+		$prefix     = self::$wc_status_prefix;
+		$prefix_len = strlen( $prefix );
+		$strip      = function ( $s ) use ( $prefix, $prefix_len ) {
+			return ( 0 === strpos( $s, $prefix ) ) ? substr( $s, $prefix_len ) : $s;
+		};
+
+		$mapped_slugs = array();
+		foreach ( array(
+			self::AWAITING_PAYMENT_STATUS,
+			self::AWAITING_SHIPMENT_STATUS,
+			self::ON_HOLD_STATUS,
+			self::COMPLETED_STATUS,
+			self::CANCELLED_STATUS,
+		) as $ss_status ) {
+			foreach ( (array) $this->get_option( $ss_status . '_status', array() ) as $s ) {
+				$mapped_slugs[] = $strip( $s );
+			}
+		}
+
+		$all_statuses   = wc_get_order_statuses();
+		$unmapped_names = array();
+		foreach ( $export_statuses as $raw ) {
+			$slug = $strip( $raw );
+			if ( in_array( $slug, $mapped_slugs, true ) ) {
+				continue;
+			}
+			$prefixed         = $prefix . $slug;
+			$unmapped_names[] = isset( $all_statuses[ $prefixed ] ) ? $all_statuses[ $prefixed ] : $slug;
+		}
+
+		return $unmapped_names;
+	}
+
+	/**
+	 * Check that every status in export_statuses is covered by at least one mapping slot.
+	 *
+	 * Only runs in REST mode. Calls WC_Admin_Settings::add_error() when unmapped
+	 * statuses are found so WooCommerce shows a red error box on the settings page.
+	 * Because WC_Admin_Settings::show_messages() uses an `elseif` between errors and
+	 * messages, adding an error here also suppresses the default "Your settings have
+	 * been saved." success notice — no extra work needed.
+	 *
+	 * @return void
+	 */
+	private function validate_export_statuses_mapping(): void {
+		$unmapped_names = $this->get_unmapped_export_statuses();
+		if ( empty( $unmapped_names ) ) {
+			return;
+		}
+
+		\WC_Admin_Settings::add_error(
+			__( 'Settings saved, but some selected export statuses are not mapped to a ShipStation status. Please review the settings below.', 'woocommerce-shipstation-integration' )
 		);
 	}
 
@@ -236,11 +449,56 @@ class WC_ShipStation_Integration extends WC_Integration {
 
 	/**
 	 * Update options for ShipStation settings.
-	 * This method is needed for `woocommerce_update_options_integration_shipstation` action hook.
-	 * `WC_Integration::process_admin_options()` cannot be used directly to that action hook as it return value and PHPStan won't allow it.
+	 *
+	 * `WC_Integration::process_admin_options()` cannot be hooked directly because it
+	 * returns a value and PHPStan rejects that for action callbacks.
+	 *
+	 * When Status Mapping Mode is "API" (`status_mode === 'api'`), the five status
+	 * mapping <select> elements are HTML-disabled in the browser and therefore do
+	 * not arrive in `$_POST`. WC's validate_*_field() helpers turn an absent key
+	 * into `''`, so without intervention `process_admin_options()` would clear the
+	 * stored mappings on every save. Pre-fill the missing keys from `get_option()`
+	 * so the values round-trip unchanged, matching the merchant's expectation that
+	 * saving while ShipStation owns the mappings is a no-op for those fields.
 	 */
 	public function update_shipstation_options() {
+		$post_data = $this->get_post_data();
+		$mode_key  = $this->get_field_key( 'status_mode' );
+		$new_mode  = isset( $post_data[ $mode_key ] )
+			? sanitize_key( wp_unslash( $post_data[ $mode_key ] ) )
+			: $this->get_option( 'status_mode' );
+
+		if ( self::STATUS_MODE_API === $new_mode ) {
+			$status_field_keys = array(
+				self::AWAITING_PAYMENT_STATUS . '_status',
+				self::AWAITING_SHIPMENT_STATUS . '_status',
+				self::ON_HOLD_STATUS . '_status',
+				self::COMPLETED_STATUS . '_status',
+				self::CANCELLED_STATUS . '_status',
+			);
+
+			foreach ( $status_field_keys as $key ) {
+				$field_key = $this->get_field_key( $key );
+				if ( isset( $post_data[ $field_key ] ) ) {
+					continue;
+				}
+				$stored = $this->get_option( $key );
+				if ( ! empty( $stored ) ) {
+					$post_data[ $field_key ] = $stored;
+				}
+			}
+
+			$this->set_post_data( $post_data );
+		}
+
 		$this->process_admin_options();
+
+		// Refresh the export_statuses description so the same-request render after save
+		// reflects the newly-saved option values. Avoids re-running the full
+		// init_form_fields()/data-settings.php include just to refresh one string.
+		$this->form_fields['export_statuses']['description'] = $this->get_export_statuses_description();
+
+		$this->validate_export_statuses_mapping();
 	}
 
 	/**
@@ -268,8 +526,8 @@ class WC_ShipStation_Integration extends WC_Integration {
 		}
 
 		$log_info = array();
-		$this->update_option( 'status_mode', 'plugin' );
-		$log_info['status_mode'] = 'plugin';
+		$this->update_status_mode( self::STATUS_MODE_PLUGIN );
+		$log_info['status_mode'] = self::STATUS_MODE_PLUGIN;
 
 		$shipstation_statuses = array_keys( self::$status_mapping );
 
@@ -331,7 +589,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 
 		$mapping_mode = $this->get_option( 'status_mode', '' );
 
-		if ( 'plugin' === $mapping_mode ) {
+		if ( self::STATUS_MODE_PLUGIN === $mapping_mode ) {
 			return;
 		}
 
@@ -359,14 +617,28 @@ class WC_ShipStation_Integration extends WC_Integration {
 				$wc_statuses
 			);
 
+			// Preserve merchant-configured custom (non-core) statuses that ShipStation's
+			// payload omits. ShipStation's account-side mapping UI only knows about WC
+			// core statuses, so any non-core status in the existing plugin-side option
+			// was added by the merchant via this UI and must not be silently dropped on
+			// every poll (SHIPSTN-122).
+			$existing_wc_statuses = (array) $this->get_option( $ss_status . '_status', array() );
+			$preserved_custom     = array_values(
+				array_diff( $existing_wc_statuses, self::WC_CORE_ORDER_STATUSES, $wc_statuses )
+			);
+			$wc_statuses          = array_values( array_unique( array_merge( $wc_statuses, $preserved_custom ) ) );
+
 			$this->update_option( $ss_status . '_status', $wc_statuses );
 			$log_info[ $ss_status . '_status' ] = $wc_statuses;
+			if ( ! empty( $preserved_custom ) ) {
+				$log_info[ $ss_status . '_status_preserved_custom' ] = $preserved_custom;
+			}
 		}
 
 		// Update the status mode only if the status_mode still empty.
 		if ( empty( $mapping_mode ) ) {
-			$this->update_option( 'status_mode', 'plugin' );
-			$log_info['status_mode'] = 'plugin';
+			$this->update_status_mode( self::STATUS_MODE_PLUGIN );
+			$log_info['status_mode'] = self::STATUS_MODE_PLUGIN;
 		}
 
 		$this->refresh_status_mapping();
@@ -438,7 +710,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 */
 	public function add_more_diagnostics_details( $site_info ) {
 		$site_info['source_details']['status_mapping']      = self::$status_mapping;
-		$site_info['source_details']['status_mapping_mode'] = $this->get_option( 'status_mode', 'api' );
+		$site_info['source_details']['status_mapping_mode'] = $this->get_option( 'status_mode', self::STATUS_MODE_API );
 
 		return $site_info;
 	}
@@ -448,6 +720,68 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 */
 	public function enqueue_scripts() {
 		wp_enqueue_style( 'shipstation-admin', plugins_url( 'assets/css/admin.css', WC_SHIPSTATION_FILE ), array(), WC_SHIPSTATION_VERSION );
+	}
+
+	/**
+	 * Enqueue scripts and styles for the ShipStation integration settings page.
+	 *
+	 * @since 5.0.8
+	 *
+	 * @param string $hook_suffix Current admin page hook suffix.
+	 */
+	public function enqueue_admin_settings_scripts( $hook_suffix ) {
+		if ( 'woocommerce_page_wc-settings' !== $hook_suffix ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab/section detection, no action taken.
+		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : '';
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab/section detection, no action taken.
+		$section = isset( $_GET['section'] ) ? sanitize_key( wp_unslash( $_GET['section'] ) ) : '';
+
+		if ( 'integration' !== $tab || 'shipstation' !== $section ) {
+			return;
+		}
+
+		$suffix = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
+		wp_enqueue_script(
+			'shipstation-admin-settings',
+			WC_SHIPSTATION_PLUGIN_URL . 'assets/js/admin-settings' . $suffix . '.js',
+			array( 'jquery' ),
+			WC_SHIPSTATION_VERSION,
+			true
+		);
+
+		wp_enqueue_style(
+			'shipstation-admin',
+			WC_SHIPSTATION_PLUGIN_URL . 'assets/css/admin.css',
+			array(),
+			WC_SHIPSTATION_VERSION
+		);
+
+		wp_localize_script(
+			'shipstation-admin-settings',
+			'wcShipStationSettings',
+			array(
+				'statusModeFieldId'     => 'woocommerce_shipstation_status_mode',
+				'apiMode'               => self::STATUS_MODE_API,
+				'apiModeFieldId'        => 'woocommerce_shipstation_api_mode',
+				'restApiModeValue'      => 'REST',
+				'exportStatusesFieldId' => 'woocommerce_shipstation_export_statuses',
+				'unmappedWarningId'     => 'shipstation-unmapped-warning',
+				'statusFieldIds'        => array(
+					'woocommerce_shipstation_' . self::AWAITING_PAYMENT_STATUS . '_status',
+					'woocommerce_shipstation_' . self::AWAITING_SHIPMENT_STATUS . '_status',
+					'woocommerce_shipstation_' . self::ON_HOLD_STATUS . '_status',
+					'woocommerce_shipstation_' . self::COMPLETED_STATUS . '_status',
+					'woocommerce_shipstation_' . self::CANCELLED_STATUS . '_status',
+				),
+				'excludedStatusesLabel' => __( 'Excluded from export:', 'woocommerce-shipstation-integration' ),
+				'allStatusesExported'   => __( 'All statuses are selected for export.', 'woocommerce-shipstation-integration' ),
+				'unmappedWarningPrefix' => __( 'Selected for export but not mapped to a ShipStation status:', 'woocommerce-shipstation-integration' ),
+				'unmappedWarningSuffix' => __( 'Map them below so their orders are exported correctly.', 'woocommerce-shipstation-integration' ),
+			)
+		);
 	}
 
 	/**
@@ -476,11 +810,15 @@ class WC_ShipStation_Integration extends WC_Integration {
 				}
 			}
 		}
+
 		// If Checkout class does not exist, disable the gift option.
 		if ( ! class_exists( 'WooCommerce\Shipping\ShipStation\Checkout' ) ) {
 			$this->form_fields['gift_enabled']['custom_attributes'] = array( 'disabled' => 'disabled' );
 			$this->form_fields['gift_enabled']['description']       = __( 'This feature requires WooCommerce 9.7.0 or higher.', 'woocommerce-shipstation-integration' );
 		}
+
+		$this->form_fields['export_statuses']['desc_tip']    = false;
+		$this->form_fields['export_statuses']['description'] = $this->get_export_statuses_description();
 	}
 
 	/**

@@ -66,6 +66,22 @@ defined( 'ABSPATH' ) || exit;
 			<!-- After-first-view content -->
 			<div id="shipstation-after-view" style="display: none;">
 				<p><?php esc_html_e( 'For security, REST API keys are now hidden. To connect a new selling channel in ShipStation, generate new keys. This will invalidate the current ones.', 'woocommerce-shipstation-integration' ); ?></p>
+				<p id="shipstation-truncated-key-row" class="shipstation-truncated-key-row" style="display: none;">
+					<?php
+					echo wp_kses_post(
+						sprintf(
+							/* translators: %s: truncated last 7 characters of the consumer key. */
+							__( 'Consumer key ending in %s', 'woocommerce-shipstation-integration' ),
+							'<code id="shipstation-truncated-key"></code>'
+						)
+					);
+					?>
+				</p>
+			</div>
+			<!-- Missing-keys view: shown when the REST API keys this plugin generated have been deleted externally. -->
+			<div id="shipstation-missing-view" class="shipstation-missing-view notice notice-error inline" style="display: none;">
+				<p class="shipstation-missing-title"><strong id="shipstation-missing-title"></strong></p>
+				<p class="shipstation-missing-text" id="shipstation-missing-text"></p>
 			</div>
 
 			<div class="shipstation-auth-field">

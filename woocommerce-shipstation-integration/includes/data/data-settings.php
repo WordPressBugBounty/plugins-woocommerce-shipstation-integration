@@ -66,11 +66,18 @@ $fields = array(
 		'title'       => __( 'Status Mapping Mode', 'woocommerce-shipstation-integration' ),
 		'type'        => 'select',
 		'options'     => array(
-			'api'    => __( 'API', 'woocommerce-shipstation-integration' ),
+			'api'    => __( 'ShipStation', 'woocommerce-shipstation-integration' ),
 			'plugin' => __( 'Plugin', 'woocommerce-shipstation-integration' ),
 		),
-		'description' => __( 'Define how the order status will be mapped.', 'woocommerce-shipstation-integration' ),
-		'desc_tip'    => true,
+		'description' => sprintf(
+			/* translators: 1: <strong>ShipStation</strong>, 2: ShipStation mode explanation, 3: <strong>Plugin</strong>, 4: Plugin mode explanation */
+			'%1$s: %2$s<br>%3$s: %4$s',
+			'<strong>' . esc_html__( 'ShipStation', 'woocommerce-shipstation-integration' ) . '</strong>',
+			esc_html__( 'Mappings are managed externally, in your ShipStation account connection settings.', 'woocommerce-shipstation-integration' ),
+			'<strong>' . esc_html__( 'Plugin', 'woocommerce-shipstation-integration' ) . '</strong>',
+			esc_html__( 'Mappings are managed here, in the plugin settings below.', 'woocommerce-shipstation-integration' )
+		),
+		'desc_tip'    => false,
 		'default'     => '',
 	),
 	WC_ShipStation_Integration::AWAITING_PAYMENT_STATUS . '_status' => array(

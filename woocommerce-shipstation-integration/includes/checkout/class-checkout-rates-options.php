@@ -39,6 +39,8 @@ final class Checkout_Rates_Options {
 	/**
 	 * Get the configured rates URL.
 	 *
+	 * @since 5.0.6
+	 *
 	 * @return string Empty string when unset.
 	 */
 	public static function get_rates_url(): string {
@@ -49,9 +51,13 @@ final class Checkout_Rates_Options {
 	/**
 	 * Store the rates URL.
 	 *
+	 * @since 5.0.6
+	 *
 	 * @param string $url Opaque ShipStation rates URL.
 	 *
-	 * @return bool Whether the option write succeeded.
+	 * @return bool True when the value was stored, or when the new value already
+	 *              matches the stored one (no update_option() call is issued in
+	 *              that case, so pre_update_option_* filters do not fire).
 	 */
 	public static function set_rates_url( string $url ): bool {
 		if ( self::get_rates_url() === $url ) {
@@ -63,14 +69,21 @@ final class Checkout_Rates_Options {
 	/**
 	 * Delete the stored rates URL.
 	 *
-	 * @return bool True when an existing value was removed; false when the option was already absent or the delete failed.
+	 * @since 5.0.6
+	 *
+	 * @return bool True when the option was removed or was already absent; false only when the delete operation itself failed.
 	 */
 	public static function clear_rates_url(): bool {
+		if ( ! self::is_configured() ) {
+			return true;
+		}
 		return delete_option( self::OPTION_RATES_URL );
 	}
 
 	/**
 	 * Whether a rates URL is currently stored.
+	 *
+	 * @since 5.0.6
 	 *
 	 * @return bool
 	 */
@@ -81,6 +94,8 @@ final class Checkout_Rates_Options {
 	/**
 	 * Whether the merchant-side enable flag is on.
 	 *
+	 * @since 5.0.6
+	 *
 	 * @return bool
 	 */
 	public static function get_enabled(): bool {
@@ -90,6 +105,8 @@ final class Checkout_Rates_Options {
 
 	/**
 	 * Set the merchant-side enable flag.
+	 *
+	 * @since 5.0.6
 	 *
 	 * @param bool $enabled Desired state.
 	 *
@@ -102,6 +119,8 @@ final class Checkout_Rates_Options {
 
 	/**
 	 * Redact the configured rates URL (and any GUID-tail HTTPS URL) from a log message.
+	 *
+	 * @since 5.0.6
 	 *
 	 * @param string $message Log message that may contain the URL.
 	 *

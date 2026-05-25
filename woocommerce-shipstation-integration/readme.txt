@@ -7,7 +7,7 @@ WC tested up to: 10.8
 WC requires at least: 10.6
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.0.7
+Stable tag: 5.0.8
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,12 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.8 - 2026-05-25 =
+* Fix   - Harden REST API key handling: prevent duplicate key rows on Connection Details dialog open (most visible on Multisite), tag plugin-generated keys with `ck_wcss_` / `cs_wcss_`, and show the truncated key in the dialog.
+* Fix   - Preserve custom order statuses across status-mapping syncs when Status Mapping Mode is "ShipStation".
+* Fix   - In "Plugin" Status Mapping Mode, ignore the `status_mapping` query parameter on `/wc-shipstation/v1/orders` so the merchant's export-statuses list (including custom statuses) is the source of truth and orders with merchant-added statuses are no longer dropped on export.
+* Tweak - Status Mapping Mode: rename the "API" option to "ShipStation" and clarify the description; the mapping fields are disabled when "ShipStation" is selected.
 
 = 5.0.7 - 2026-05-20 =
 * Tweak - WordPress 7.0 Compatibility.

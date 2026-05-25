@@ -93,6 +93,19 @@ class API_Controller {
 			if ( get_current_user_id() !== $user_id ) {
 				wp_set_current_user( $user_id );
 			}
+
+			// Audit trail for support: which row authenticated this call. The
+			// truncated_key is the same suffix WC shows in its admin listing,
+			// so a support engineer can cross-reference without needing the
+			// plaintext key. Gated on the existing Logger flag — no cost when
+			// logging is disabled.
+			Logger::debug(
+				sprintf(
+					'ShipStation Basic Auth accepted: key_id=%d truncated_key=%s',
+					(int) $row->key_id,
+					(string) $row->truncated_key
+				)
+			);
 		}
 
 		/**
@@ -210,7 +223,7 @@ class API_Controller {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.NoCaching -- result memoised in self::$api_key_row_cache for the request lifetime
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT user_id, consumer_key, consumer_secret FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_key = %s",
+				"SELECT key_id, user_id, consumer_key, consumer_secret, truncated_key FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_key = %s",
 				$hashed_consumer_key
 			)
 		);

@@ -7,6 +7,7 @@
 
 	const AuthDisplay = {
 		requestMade: false, // Track if request has been made to avoid unnecessary requests.
+		keysAreMissing: false, // True while the "REST API keys missing" view is the active panel.
 
 		init: function () {
 			this.bindEvents();
@@ -105,12 +106,27 @@
 				} )
 				.then( function ( response ) {
 					if ( response && response.success ) {
+						// First-time merchant (no option, no row): auto-trigger
+						// generation so the modal shows plaintext on first open
+						// without making the user click "Generate". Mark the
+						// request as already made BEFORE chaining so a slow AJAX
+						// + close/reopen cannot fire a second concurrent
+						// generate POST that the server-side lock would reject
+						// with a confusing "another request is generating"
+						// message.
+						if ( response.data && response.data.first_time ) {
+							AuthDisplay.requestMade = true;
+							AuthDisplay.requestNewKeys();
+							return;
+						}
 						AuthDisplay.populateModal( response.data );
 					} else {
+						AuthDisplay.requestMade = false;
 						AuthDisplay.showError( ( response && response.data && response.data.message ) || wc_shipstation_auth_params.error_text );
 					}
 				} )
 				.catch( function () {
+					AuthDisplay.requestMade = false;
 					AuthDisplay.showError( wc_shipstation_auth_params.error_text );
 				} );
 		},
@@ -122,27 +138,43 @@
 				clsOverlay.style.display = 'none';
 			}
 
+			// Clear any stale error banner from a previous failed attempt so a
+			// successful (re)load never renders credentials beneath a
+			// contradictory error notice. showError() inserts the overlay only
+			// once, so without this it would persist across an error → retry.
+			const errorOverlay = $( '.shipstation-error-overlay' );
+			if ( errorOverlay && errorOverlay.parentNode ) {
+				errorOverlay.parentNode.removeChild( errorOverlay );
+			}
+
 			// Mark that request has been made.
 			AuthDisplay.requestMade = true;
 
-			const firstView = $( '#shipstation-first-view' );
-			const afterView = $( '#shipstation-after-view' );
+			const firstView   = $( '#shipstation-first-view' );
+			const afterView   = $( '#shipstation-after-view' );
+			const missingView = $( '#shipstation-missing-view' );
 
-			// If consumer_secret is missing, show the "after" view, otherwise the first-time view.
-			if ( ! data.consumer_secret ) {
-				if ( firstView ) {
-					firstView.style.display = 'none';
+			// Three states:
+			//   1. Plaintext present → first-time view (just generated).
+			//   2. No plaintext, keys exist in DB → after-view (already seen).
+			//   3. No plaintext, keys_exist === false → missing-view (deleted externally).
+			const hidePanel = function ( el ) {
+				if ( el ) {
+					el.style.display = 'none';
 				}
-				if ( afterView ) {
-					afterView.style.display = 'block';
+			};
+			const showPanel = function ( el, displayValue ) {
+				if ( el ) {
+					el.style.display = displayValue || 'block';
 				}
-			} else {
-				if ( afterView ) {
-					afterView.style.display = 'none';
-				}
-				if ( firstView ) {
-					firstView.style.display = 'block';
-				}
+			};
+
+			if ( data.consumer_secret ) {
+				AuthDisplay.keysAreMissing = false;
+				hidePanel( afterView );
+				hidePanel( missingView );
+				showPanel( firstView );
+
 				const consumerKey    = $( '#shipstation-consumer-key' );
 				const consumerSecret = $( '#shipstation-consumer-secret' );
 				if ( consumerKey ) {
@@ -150,6 +182,41 @@
 				}
 				if ( consumerSecret ) {
 					consumerSecret.value = data.consumer_secret || '';
+				}
+			} else if ( data.keys_existed_but_missing ) {
+				AuthDisplay.keysAreMissing = true;
+				hidePanel( firstView );
+				hidePanel( afterView );
+
+				const titleEl = $( '#shipstation-missing-title' );
+				const textEl  = $( '#shipstation-missing-text' );
+				if ( titleEl ) {
+					titleEl.textContent = wc_shipstation_auth_params.missing_keys_title || '';
+				}
+				if ( textEl ) {
+					textEl.textContent = wc_shipstation_auth_params.missing_keys_text || '';
+				}
+				showPanel( missingView );
+			} else {
+				AuthDisplay.keysAreMissing = false;
+				hidePanel( firstView );
+				hidePanel( missingView );
+				showPanel( afterView );
+
+				// Surface the truncated identifier of the row that's currently
+				// in use so the merchant can cross-reference it against WC →
+				// Settings → Advanced → REST API and confirm ShipStation is
+				// authenticating against the expected key.
+				const truncatedRow  = $( '#shipstation-truncated-key-row' );
+				const truncatedCode = $( '#shipstation-truncated-key' );
+				if ( truncatedRow && truncatedCode ) {
+					if ( data.truncated_key ) {
+						truncatedCode.textContent = data.truncated_key;
+						truncatedRow.style.display = '';
+					} else {
+						truncatedCode.textContent = '';
+						truncatedRow.style.display = 'none';
+					}
 				}
 			}
 
@@ -209,9 +276,60 @@
 				return;
 			}
 
-			navigator.clipboard.writeText( input.value ).then( function () {
-				AuthDisplay.showCopyFeedback( buttonEl );
+			AuthDisplay.copyValue( input ).then( function ( copied ) {
+				if ( copied ) {
+					AuthDisplay.showCopyFeedback( buttonEl );
+				}
 			} );
+		},
+
+		// Copy a field's value to the clipboard, resolving to true only on an
+		// actual success. The async Clipboard API is used when available, but it
+		// is undefined outside a secure context (plain HTTP on any host other
+		// than localhost) and can also reject even when present, so both cases
+		// fall back to the legacy execCommand path.
+		copyValue: function ( input ) {
+			if ( window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText ) {
+				return navigator.clipboard.writeText( input.value ).then(
+					function () {
+						return true;
+					},
+					function () {
+						return AuthDisplay.legacyCopy( input );
+					}
+				);
+			}
+
+			return Promise.resolve( AuthDisplay.legacyCopy( input ) );
+		},
+
+		// Legacy clipboard fallback using a temporary selection + execCommand.
+		// Password fields are switched to text for the copy so the real value is
+		// captured rather than the masked display, then restored afterwards.
+		legacyCopy: function ( input ) {
+			const originalType = input.getAttribute( 'type' );
+			if ( 'password' === originalType ) {
+				input.setAttribute( 'type', 'text' );
+			}
+
+			input.focus();
+			input.select();
+			if ( input.setSelectionRange ) {
+				input.setSelectionRange( 0, input.value.length );
+			}
+
+			let copied = false;
+			try {
+				copied = document.execCommand( 'copy' );
+			} catch ( e ) {
+				copied = false;
+			}
+
+			if ( 'password' === originalType ) {
+				input.setAttribute( 'type', 'password' );
+			}
+
+			return copied;
 		},
 
 		showCopyFeedback: function ( buttonEl ) {
@@ -266,12 +384,30 @@
 		},
 
 		generateNewKeys: function ( event ) {
-			if ( ! window.confirm( wc_shipstation_auth_params.confirm_text ) ) {
+			// Skip the "this will disable your old keys" confirmation when the
+			// merchant has just been told their keys are missing — there are no
+			// old keys to disable in that state, so the prompt is misleading.
+			// A successful generate flips the missing-keys flag back to false
+			// via populateModal(), so a second click within the same modal
+			// session correctly re-prompts.
+			//
+			// Failed-generate path: if the AJAX errors (network/lock/DB),
+			// keysAreMissing intentionally STAYS true and a retry click also
+			// skips the confirm. That's correct — the merchant still has zero
+			// valid keys, so prompting "this will disable your old keys" would
+			// remain misleading. The flag only resets on a successful generate.
+			if ( ! AuthDisplay.keysAreMissing && ! window.confirm( wc_shipstation_auth_params.confirm_text ) ) {
 				return;
 			}
 
 			event.preventDefault();
+			AuthDisplay.requestNewKeys();
+		},
 
+		// Issues the generate-new-keys AJAX request without any confirmation
+		// prompt. Used by the explicit button (after the user confirms) and by
+		// the first-time auto-generate path.
+		requestNewKeys: function () {
 			const clsOverlay = $( '.shipstation-loading-overlay' );
 			if ( clsOverlay ) {
 				clsOverlay.style.display = 'flex';
@@ -293,10 +429,17 @@
 					if ( response && response.success ) {
 						AuthDisplay.populateModal( response.data );
 					} else {
+						// Reset so a reopen re-fetches state. The first-time
+						// auto-generate path sets requestMade = true before
+						// chaining here; if this generate fails, leaving it true
+						// would make showModal() skip the reload and strand the
+						// merchant on the error overlay until a full page refresh.
+						AuthDisplay.requestMade = false;
 						AuthDisplay.showError( ( response && response.data && response.data.message ) || wc_shipstation_auth_params.error_text );
 					}
 				} )
 				.catch( function () {
+					AuthDisplay.requestMade = false;
 					AuthDisplay.showError( wc_shipstation_auth_params.error_text );
 				} );
 		},
