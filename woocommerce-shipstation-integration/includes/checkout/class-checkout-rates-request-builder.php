@@ -105,9 +105,9 @@ final class Checkout_Rates_Request_Builder {
 			$destination
 		);
 
-		$name  = $this->get_customer_name( $destination );
-		$phone = $this->get_customer_phone( $destination );
-		$email = $this->get_customer_email( $destination );
+		$name  = $this->get_customer_name();
+		$phone = $this->get_customer_phone();
+		$email = $this->get_customer_email();
 
 		$built_destination = array(
 			'country'      => $destination['country'] ?? '',
@@ -346,89 +346,49 @@ final class Checkout_Rates_Request_Builder {
 	}
 
 	/**
-	 * Get customer name from destination or customer object.
+	 * Get customer name from the customer object.
 	 *
-	 * Accepts a partial destination name — either first_name or last_name (or both)
-	 * is sufficient; trim collapses missing halves. Falls back to the customer
-	 * object's shipping address, then billing address, when the destination yields
-	 * nothing. Name is an optional API field, so all log entries are debug-level —
-	 * absence and customer-object fallback are expected behavior, not actionable
-	 * conditions. Debug entries provide a diagnostic trail for merchants who
-	 * actively investigate why a name field is missing in their ShipStation requests.
+	 * Name is an optional API field, so absence is expected behavior and not
+	 * an actionable condition.
 	 *
-	 * @param array $destination WC package destination array.
+	 * @since 4.9.8
 	 *
 	 * @return string
 	 */
-	private function get_customer_name( array $destination ) {
-		$first = '';
-		$last  = '';
-
-		if ( isset( $destination['first_name'] ) && is_string( $destination['first_name'] ) ) {
-			$first = trim( $destination['first_name'] );
-		}
-
-		if ( '' === $first ) {
-			Logger::debug( 'Checkout rates: destination first_name is empty.' );
-		}
-
-		if ( isset( $destination['last_name'] ) && is_string( $destination['last_name'] ) ) {
-			$last = trim( $destination['last_name'] );
-		}
-
-		if ( '' === $last ) {
-			Logger::debug( 'Checkout rates: destination last_name is empty.' );
-		}
-
-		$name = trim( $first . ' ' . $last );
-		if ( '' !== $name ) {
-			return $name;
-		}
-
+	private function get_customer_name(): string {
 		$customer = $this->get_customer();
 
 		if ( $customer ) {
 			$name = trim( $customer->get_shipping_first_name() . ' ' . $customer->get_shipping_last_name() );
 			if ( '' !== $name ) {
-				Logger::debug(
-					'Checkout rates: destination first/last name was empty; falling back to the customer shipping address.'
-				);
 				return $name;
 			}
 
 			$name = trim( $customer->get_billing_first_name() . ' ' . $customer->get_billing_last_name() );
 			if ( '' !== $name ) {
-				Logger::debug(
-					'Checkout rates: destination first/last name was empty; falling back to the customer billing address.'
-				);
 				return $name;
 			}
 		}
 
 		Logger::debug(
-			'Checkout rates: destination first/last name was empty and no customer name is available; the rates request will omit the name field.'
+			'Checkout rates: no customer name is available; the rates request will omit the name field.'
 		);
 
 		return '';
 	}
 
 	/**
-	 * Get customer phone from destination or customer object.
+	 * Get customer phone from customer object.
 	 *
-	 * @param array $destination WC package destination array.
+	 * @since 4.9.8
 	 *
 	 * @return string
 	 */
-	private function get_customer_phone( array $destination ) {
-		$phone = '';
-
-		if ( isset( $destination['phone'] ) && is_string( $destination['phone'] ) ) {
-			$phone = trim( $destination['phone'] );
-		}
-
+	private function get_customer_phone(): string {
+		$phone    = '';
 		$customer = $this->get_customer();
 
-		if ( '' === $phone && $customer ) {
+		if ( $customer ) {
 			$phone = trim( $customer->get_billing_phone() );
 		}
 
@@ -436,43 +396,39 @@ final class Checkout_Rates_Request_Builder {
 	}
 
 	/**
-	 * Get customer email from destination or customer object.
+	 * Get customer email from the customer object.
 	 *
-	 * If the destination email is set but invalid, a warning is logged and the
-	 * customer object's email is used as a fallback. If neither yields a valid
-	 * email, an empty string is returned so the field is omitted from the payload.
-	 *
-	 * @param array $destination WC package destination array.
+	 * @since 4.9.8
 	 *
 	 * @return string
 	 */
-	private function get_customer_email( array $destination ) {
-		$destination_email_invalid = false;
-
-		if ( isset( $destination['email'] ) && is_string( $destination['email'] ) && '' !== trim( $destination['email'] ) ) {
-			$email = sanitize_email( $destination['email'] );
-			if ( is_email( $email ) ) {
-				return $email;
-			}
-			$destination_email_invalid = true;
-		}
-
+	private function get_customer_email(): string {
+		// Prefer billing email so a logged-in user who edits the checkout email field
+		// gets the just-typed value forwarded (not the older account email on the WP
+		// user record), and guests with no account still get the form-entered email
+		// through. Account email is the fallback. Email is optional, so the empty
+		// path is silent — only a non-empty value that fails validation warns.
 		$customer = $this->get_customer();
-		if ( $customer ) {
-			$email = $customer->get_email();
-			if ( is_email( $email ) ) {
-				if ( $destination_email_invalid ) {
-					Logger::warning(
-						'Checkout rates: destination email was invalid; falling back to the customer account email.'
-					);
-				}
-				return $email;
-			}
+
+		if ( ! $customer ) {
+			return '';
 		}
 
-		if ( $destination_email_invalid ) {
+		$billing_email = sanitize_email( (string) $customer->get_billing_email() );
+
+		if ( is_email( $billing_email ) ) {
+			return $billing_email;
+		}
+
+		$account_email = sanitize_email( (string) $customer->get_email() );
+
+		if ( is_email( $account_email ) ) {
+			return $account_email;
+		}
+
+		if ( '' !== $billing_email || '' !== $account_email ) {
 			Logger::warning(
-				'Checkout rates: destination email was invalid and no customer account email is available; the rates request will omit the email field.'
+				'Checkout rates: customer email is set but does not validate; the rates request will omit the email field.'
 			);
 		}
 

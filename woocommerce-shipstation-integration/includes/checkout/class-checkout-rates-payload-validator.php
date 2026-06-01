@@ -3,7 +3,7 @@
  * Checkout Rates Payload Validator class file.
  *
  * @package WC_ShipStation
- * @since 5.0.6
+ * @since 5.0.9
  */
 
 namespace WooCommerce\Shipping\ShipStation\Checkout;
@@ -22,7 +22,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * so callers can skip the upstream API request rather than send a payload ShipStation
  * will reject.
  *
- * @since 5.0.6
+ * @since 5.0.9
  */
 final class Checkout_Rates_Payload_Validator {
 
@@ -43,7 +43,7 @@ final class Checkout_Rates_Payload_Validator {
 	/**
 	 * Validate the final outbound payload.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param array $payload   Final outbound payload (post all filters).
 	 * @param array $snapshots Optional pre-filter snapshots for attribution. Recognised keys:

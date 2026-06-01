@@ -455,23 +455,31 @@ class Order_Util {
 		$hpos    = self::custom_orders_table_usage_is_enabled();
 		$sync_on = self::data_sync_is_enabled();
 
-		// Build the list of tables to write to. Under HPOS sync mode both
-		// wc_orders_meta and wp_postmeta are live. WC's sync mechanism mirrors
-		// changes by listening to CRUD hooks — which a direct SQL write bypasses
-		// entirely — so we must keep both tables consistent ourselves.
-		//
-		// | HPOS | Sync | Tables written            |
-		// |------|------|---------------------------|
-		// | off  | off  | wp_postmeta               |
-		// | on   | off  | wc_orders_meta            |
-		// | on   | on   | wc_orders_meta + postmeta |
-		// | off  | on   | wp_postmeta + wc_orders_meta |
+		/*
+		 * Build the list of tables to write to. Under HPOS sync mode both
+		 * wc_orders_meta and wp_postmeta are live. WC's sync mechanism mirrors
+		 * changes by listening to CRUD hooks — which a direct SQL write bypasses
+		 * entirely — so we must keep both tables consistent ourselves.
+		 *
+		 * | HPOS | Sync | Tables written              |
+		 * |------|------|-----------------------------|
+		 * | off  | off  | wp_postmeta                 |
+		 * | on   | off  | wc_orders_meta              |
+		 * | on   | on   | wc_orders_meta + postmeta   |
+		 * | off  | on   | wp_postmeta + wc_orders_meta|
+		 */
 		$targets = array();
 		if ( $hpos || $sync_on ) {
-			$targets[] = array( 'table' => $wpdb->prefix . 'wc_orders_meta', 'col' => 'order_id' );
+			$targets[] = array(
+				'table' => $wpdb->prefix . 'wc_orders_meta',
+				'col'   => 'order_id',
+			);
 		}
 		if ( ! $hpos || $sync_on ) {
-			$targets[] = array( 'table' => $wpdb->postmeta, 'col' => 'post_id' );
+			$targets[] = array(
+				'table' => $wpdb->postmeta,
+				'col'   => 'post_id',
+			);
 		}
 
 		// Neither `wp_postmeta` nor `wc_orders_meta` has a UNIQUE index on
@@ -746,7 +754,7 @@ class Order_Util {
 			if ( ! isset( self::$order_notes_cache[ $order_id ] ) ) {
 				continue;
 			}
-			$bucket                                            = get_comment_meta( $note->comment_ID, 'is_customer_note', true ) ? 'customer' : 'private';
+			$bucket = get_comment_meta( $note->comment_ID, 'is_customer_note', true ) ? 'customer' : 'private';
 			self::$order_notes_cache[ $order_id ][ $bucket ][] = html_entity_decode( $note->comment_content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
 		}
 	}

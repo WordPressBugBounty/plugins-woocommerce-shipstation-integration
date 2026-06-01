@@ -143,7 +143,16 @@ class Main {
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-auth-controller.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-logger.php';
+
+		// Options class is side-effect-free and is reached from data-settings.php
+		// regardless of the feature flag's timing, so load it unconditionally.
+		// It owns SHIPPING_METHOD_ID, so the settings gate and zone-method
+		// lookups need nothing from the shipping method class. The shipping
+		// method and the rest of the Checkout Rates infrastructure (validator,
+		// builder, mapper, API client) load lazily in register_shipping_methods()
+		// because they're only needed when actually calculating rates at checkout.
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-options.php';
+
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-privacy.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-api.php';
 
@@ -203,6 +212,7 @@ class Main {
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-payload-validator.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-request-builder.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-response-mapper.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-api-client.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-shipping-method.php';
 
 		$methods['shipstation_checkout_rates'] = Checkout_Rates_Shipping_Method::class;

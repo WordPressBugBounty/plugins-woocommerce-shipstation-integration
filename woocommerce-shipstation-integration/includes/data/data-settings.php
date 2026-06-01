@@ -12,6 +12,7 @@ use WooCommerce\Shipping\ShipStation\Order_Util;
 use WooCommerce\Shipping\ShipStation\Auth_Controller;
 use WooCommerce\Shipping\ShipStation\Features;
 use WooCommerce\Shipping\ShipStation\Main;
+use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -142,6 +143,14 @@ $fields = array(
 		'default'     => 'yes',
 	),
 );
+
+if ( Checkout_Rates_Options::should_render_settings_section() ) {
+	$fields['checkout_rates'] = array(
+		'title'       => __( 'Checkout Rates', 'woocommerce-shipstation-integration' ),
+		'type'        => 'title',
+		'description' => Checkout_Rates_Options::get_settings_description_html(),
+	);
+}
 
 if ( Features::is_wpcom_transport_enabled() ) {
 	$connection = Main::instance()->get_wpcom_connection();

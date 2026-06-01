@@ -450,6 +450,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Shipping_Method_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Data_Settings_Checkout_Rates_Field_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Checkout/Data_Settings_Checkout_Rates_Field_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\ShipStation_Unit_Converter_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/ShipStation_Unit_Converter_Test.php'

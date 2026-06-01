@@ -262,13 +262,18 @@ class Orders_Controller extends API_Controller {
 	}
 
 	/**
-	 * Get the shipstation status from WC order status.
+	 * Map a WooCommerce order status to its ShipStation `SalesOrderStatus`.
 	 *
-	 * @param string $order_status The order status to map.
+	 * A status with no mapping falls back to `OnHold`, which holds the order for
+	 * review instead of auto-shipping it: an unmapped status's intent is unknown,
+	 * and a hold is recoverable while a shipment is not (SHIPSTN-131).
 	 *
-	 * @return string
+	 * @param string        $order_status The WC order status to map.
+	 * @param WC_Order|null $order        The order being exported, for log context. Optional.
+	 *
+	 * @return string A ShipStation `SalesOrderStatus` value.
 	 */
-	public function get_shipstation_status_from_order( string $order_status ): string {
+	public function get_shipstation_status_from_order( string $order_status, ?WC_Order $order = null ): string {
 		$status_mapping = $this->get_order_status_mapping();
 
 		foreach ( $status_mapping as $shipstation_status => $wc_statuses ) {
@@ -281,7 +286,18 @@ class Orders_Controller extends API_Controller {
 			return WC_ShipStation_Integration::CANCELLED_STATUS;
 		}
 
-		return 'Unknown';
+		// No mapping for this WC status. Default to OnHold — a valid
+		// SalesOrderStatus — so the order still imports but is gated for human
+		// review rather than auto-shipped (an unknown status could mean
+		// "do-not-ship", and holding is recoverable whereas auto-shipping is not).
+		$shipstation_status = WC_ShipStation_Integration::ON_HOLD_STATUS;
+
+		if ( $order instanceof WC_Order ) {
+			// translators: 1: order id, 2: WC order status, 3: shipstation order status.
+			$this->log( sprintf( __( 'Order %1$s has an unmapped WooCommerce status (%2$s). Defaulting to ShipStation status "%3$s". Please review your status mappings.', 'woocommerce-shipstation-integration' ), $order->get_id(), $order_status, $shipstation_status ) );
+		}
+
+		return $shipstation_status;
 	}
 
 	/**
@@ -559,12 +575,7 @@ class Orders_Controller extends API_Controller {
 		$paid_date     = $this->get_shipstation_date_format( $order->get_date_paid() );
 
 		$formatted_order_number   = ltrim( $order->get_order_number(), '#' );
-		$shipstation_order_status = $this->get_shipstation_status_from_order( $order->get_status() );
-
-		if ( 'Unknown' === $shipstation_order_status ) {
-			// translators: 1: order id, 2: WC order status, 3: shipstation order status.
-			$this->log( sprintf( __( 'Order %1$s has an unmapped WooCommerce status (%2$s). Defaulting to ShipStation status "%3$s". Please review your status mappings.', 'woocommerce-shipstation-integration' ), $order->get_id(), $order->get_status(), $shipstation_order_status ) );
-		}
+		$shipstation_order_status = $this->get_shipstation_status_from_order( $order->get_status(), $order );
 
 		$order_data = array(
 			'order_id'               => $order->get_id(),
@@ -1588,6 +1599,10 @@ class Orders_Controller extends API_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function update_orders_shipments( WP_REST_Request $request ): WP_REST_Response {
+		// Ensure third-party shipnotify filters (e.g. Composite Products) are loaded.
+		// Mirrors the same call in get_orders() — see fire_legacy_api_action() for details.
+		$this->fire_legacy_api_action();
+
 		$request_params = $request->get_json_params();
 		$notifications  = isset( $request_params['notifications'] ) && is_array( $request_params['notifications'] ) ? $request_params['notifications'] : array();
 
@@ -2049,12 +2064,12 @@ class Orders_Controller extends API_Controller {
 	 *
 	 * Plugins like WooCommerce Product Bundles hook into this
 	 * action to register filters on woocommerce_order_get_items and
-	 * woocommerce_order_item_product that reshape order items for export.
+	 * woocommerce_order_item_product that reshape order items.
 	 *
 	 * In the XML API path the action fires naturally via WooCommerce's
 	 * legacy API mechanism, but the REST API path never triggers it.
 	 * Calling this method at the top of the REST endpoint ensures those
-	 * third-party filters are in place before any order items are retrieved.
+	 * third-party filters are in place before order items are read.
 	 *
 	 * @return void
 	 */

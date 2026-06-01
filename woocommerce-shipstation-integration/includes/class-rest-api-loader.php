@@ -67,7 +67,7 @@ class REST_API_Loader {
 	/**
 	 * Register the REST API routes.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 */
 	public function register_routes() {
 		$inventory_controller = new Inventory_Controller();
@@ -93,7 +93,7 @@ class REST_API_Loader {
 	 * the check to cover our namespace, allowing WC consumer key/secret auth to work
 	 * regardless of permalink structure.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param bool $is_request_to_rest_api Whether the current request targets the WC REST API.
 	 * @return bool
@@ -115,7 +115,7 @@ class REST_API_Loader {
 	/**
 	 * Registers the ShipStation namespaces for the REST API.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param array $controllers List of current REST API controllers.
 	 *

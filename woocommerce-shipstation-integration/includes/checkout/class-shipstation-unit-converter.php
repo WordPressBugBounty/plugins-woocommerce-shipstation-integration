@@ -9,7 +9,7 @@
  * and accumulate floating-point drift on known ones.
  *
  * @package WC_ShipStation
- * @since 5.0.6
+ * @since 5.0.9
  */
 
 namespace WooCommerce\Shipping\ShipStation\Checkout;
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Stateless converter mapping WooCommerce units onto ShipStation-accepted ones.
  *
- * @since 5.0.6
+ * @since 5.0.9
  */
 final class ShipStation_Unit_Converter {
 
@@ -42,7 +42,7 @@ final class ShipStation_Unit_Converter {
 	/**
 	 * Convert a dimension value from the given store unit into a ShipStation-accepted unit.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param mixed  $value      Numeric value (int, float, or numeric string).
 	 * @param string $store_unit Source unit identifier (e.g. 'mm', 'in').
@@ -57,7 +57,7 @@ final class ShipStation_Unit_Converter {
 	/**
 	 * Convert a weight value from the given store unit into a ShipStation-accepted unit.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param mixed  $value      Numeric value (int, float, or numeric string).
 	 * @param string $store_unit Source unit identifier (e.g. 'mg', 'kg').
@@ -177,7 +177,7 @@ final class ShipStation_Unit_Converter {
 		 * metric: millimetre). Use this to register custom units; entries missing
 		 * keys, with non-integer `to_base`, or an unknown family are silently dropped.
 		 *
-		 * @since 5.0.6
+		 * @since 5.0.9
 		 *
 		 * @param array<string, array{family: string, to_base: int}> $units Dimension unit table.
 		 */
@@ -233,7 +233,7 @@ final class ShipStation_Unit_Converter {
 		 * metric: milligram). Use this to register custom units; entries missing
 		 * keys, with non-integer `to_base`, or an unknown family are silently dropped.
 		 *
-		 * @since 5.0.6
+		 * @since 5.0.9
 		 *
 		 * @param array<string, array{family: string, to_base: int}> $units Weight unit table.
 		 */

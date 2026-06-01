@@ -42,7 +42,7 @@ class Checkout_Rates_Controller extends API_Controller {
 	/**
 	 * Register the routes for the controller.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 */
 	public function register_routes(): void {
 		register_rest_route(
@@ -85,7 +85,7 @@ class Checkout_Rates_Controller extends API_Controller {
 	 * Checkout_Rates_Controller has no GET routes; this exists so shared
 	 * Permission_Test_Trait tests can exercise the namespace gate.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param WP_REST_Request $request Current REST request.
 	 * @return bool|WP_Error See API_Controller::check_namespace_permission().
@@ -97,7 +97,7 @@ class Checkout_Rates_Controller extends API_Controller {
 	/**
 	 * REST API permission callback for POST /checkout-rates/* routes.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param WP_REST_Request $request Current REST request.
 	 * @return bool|WP_Error See API_Controller::check_namespace_permission().
@@ -112,7 +112,7 @@ class Checkout_Rates_Controller extends API_Controller {
 	 * Validates the URL, rejects SSRF targets, stores via
 	 * Checkout_Rates_Options::set_rates_url().
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param WP_REST_Request $request Request object.
 	 * @return WP_REST_Response
@@ -155,7 +155,7 @@ class Checkout_Rates_Controller extends API_Controller {
 	 *
 	 * Idempotent: always returns success even if no URL was stored.
 	 *
-	 * @since 5.0.6
+	 * @since 5.0.9
 	 *
 	 * @param WP_REST_Request $request Request object.
 	 * @return WP_REST_Response

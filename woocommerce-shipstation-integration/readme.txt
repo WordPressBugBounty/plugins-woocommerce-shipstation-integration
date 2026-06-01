@@ -7,7 +7,7 @@ WC tested up to: 10.8
 WC requires at least: 10.6
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.0.8
+Stable tag: 5.0.9
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.0.9 - 2026-06-01 =
+* Fix   - REST shipnotify: fire the legacy API action so third-party compatibility modules (e.g. WooCommerce Composite Products, Product Bundles) that register item-filtering hooks on `woocommerce_api_wc_shipstation` are active when shippable item counts are calculated.
+* Fix   - Export orders whose WooCommerce status has no ShipStation mapping as "OnHold" instead of the invalid "Unknown" value that made ShipStation reject the entire REST import batch. "OnHold" holds the order for review rather than auto-shipping a status whose meaning is unknown.
 
 = 5.0.8 - 2026-05-25 =
 * Fix   - Harden REST API key handling: prevent duplicate key rows on Connection Details dialog open (most visible on Multisite), tag plugin-generated keys with `ck_wcss_` / `cs_wcss_`, and show the truncated key in the dialog.
