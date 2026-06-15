@@ -344,10 +344,24 @@ class WPCOM_Connection {
 		$message   = $this->notice_message_for( $action, $success );
 
 		printf(
-			'<div class="%s is-dismissible"><p>%s</p></div>',
+			'<div class="%s is-dismissible"><p>%s</p>',
 			esc_attr( $success ? 'notice notice-success' : 'notice notice-error' ),
 			esc_html( $message )
 		);
+
+		// On a successful connect, give the merchant a one-click route to the
+		// "View Authentication Data" modal so they can copy the four connection
+		// values and finish the reconnect in ShipStation. The shared
+		// `shipstation-view-auth` class is what assets/js/auth-display.js binds
+		// the modal open to. Disconnect/error notices get no button.
+		if ( $success && self::ACTION_CONNECT === $action ) {
+			printf(
+				'<p><button type="button" class="button button-primary shipstation-view-auth">%s</button></p>',
+				esc_html__( 'View ShipStation connection details', 'woocommerce-shipstation-integration' )
+			);
+		}
+
+		echo '</div>';
 	}
 
 	/**
@@ -359,8 +373,12 @@ class WPCOM_Connection {
 	 */
 	private function notice_message_for( string $action, bool $success ): string {
 		if ( self::ACTION_CONNECT === $action ) {
+			// Action-oriented on success (SHIPSTN-133): a bare "Successfully
+			// connected" reads as done, but the merchant still has to reconnect
+			// their store in ShipStation with the new connection details. The
+			// settings-section CTA and the modal carry the same step.
 			return $success
-				? __( 'Successfully connected to WordPress.com.', 'woocommerce-shipstation-integration' )
+				? __( 'Connected to WordPress.com. Next, copy your connection details and reconnect your store in ShipStation.', 'woocommerce-shipstation-integration' )
 				: __( 'Could not connect to WordPress.com. Please try again.', 'woocommerce-shipstation-integration' );
 		}
 

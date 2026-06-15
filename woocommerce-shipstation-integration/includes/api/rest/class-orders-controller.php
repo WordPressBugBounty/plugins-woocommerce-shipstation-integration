@@ -31,6 +31,7 @@ use WooCommerce\Shipping\ShipStation\Checkout;
 use Automattic\WooCommerce\Utilities\NumberUtil;
 use Automattic\WooCommerce\Enums\OrderStatus;
 use WP_Error;
+use WooCommerce\Shipping\ShipStation\Logger;
 
 /**
  * Orders_Controller class.
@@ -202,6 +203,34 @@ class Orders_Controller extends API_Controller {
 							return is_array( $value ) ? $value : array( $value );
 						},
 					),
+					'order_ids'      => array(
+						'description'       => __( 'Return specific orders by ID. When present, page/per_page/modified_after are ignored and orders are returned regardless of status.', 'woocommerce-shipstation-integration' ),
+						'type'              => 'array',
+						'items'             => array( 'type' => 'integer' ),
+						'validate_callback' => function ( $value ) {
+							if ( is_array( $value ) && count( $value ) > 500 ) {
+								return new WP_Error(
+									'rest_invalid_param',
+									__( 'order_ids[] must contain 500 or fewer IDs.', 'woocommerce-shipstation-integration' ),
+									array( 'status' => 400 )
+								);
+							}
+							return true;
+						},
+						'sanitize_callback' => function ( $value ) {
+							if ( empty( $value ) || ! is_array( $value ) ) {
+								return array();
+							}
+							return array_values(
+								array_filter(
+									array_map( 'absint', $value ),
+									function ( $id ) {
+										return $id > 0;
+									}
+								)
+							);
+						},
+					),
 				),
 			)
 		);
@@ -344,6 +373,17 @@ class Orders_Controller extends API_Controller {
 
 		// Ensure third-party export filters (e.g. Product Bundles) are loaded.
 		$this->fire_legacy_api_action();
+
+		// When specific IDs are requested, bypass the normal date/pagination query.
+		// The sanitize_callback already returns a clean list of positive integer IDs;
+		// the cast only guards against a non-array value from a direct/internal caller.
+		$order_ids_param = isset( $request_params['order_ids'] )
+			? (array) $request_params['order_ids']
+			: array();
+
+		if ( ! empty( $order_ids_param ) ) {
+			return $this->get_orders_by_id_param( $order_ids_param );
+		}
 
 		// Get parameters.
 		$modified_after = isset( $request_params['modified_after'] ) ? strtotime( $request_params['modified_after'] ) : null;
@@ -491,6 +531,94 @@ class Orders_Controller extends API_Controller {
 	}
 
 	/**
+	 * Fetch and map a specific set of orders by WC order ID.
+	 *
+	 * Called when the `order_ids` request parameter is present. Bypasses
+	 * the normal modified_after/pagination query and returns orders regardless
+	 * of their WC status. IDs not found in the database are logged as warnings
+	 * and omitted from the response.
+	 *
+	 * @since 5.1.0
+	 *
+	 * @param int[] $requested_ids Sanitised list of positive integer order IDs.
+	 * @return WP_REST_Response
+	 */
+	private function get_orders_by_id_param( array $requested_ids ): WP_REST_Response {
+		$orders_by_id = $this->get_orders_by_ids( $requested_ids, array( 'status' => 'any' ) );
+		$this->prime_batch_caches( array_keys( $orders_by_id ) );
+		Order_Util::prime_products_for_batch( $orders_by_id );
+
+		$sales_orders   = array();
+		$orders_to_mark = array();
+
+		foreach ( $requested_ids as $order_id ) {
+			$order_id = (int) $order_id;
+
+			/**
+			 * Allow third party to skip the export of certain order ID.
+			 *
+			 * @param boolean $flag     Flag to skip the export.
+			 * @param int     $order_id Order ID.
+			 *
+			 * @since 4.1.42
+			 */
+			if ( ! apply_filters( 'woocommerce_shipstation_export_order', true, $order_id ) ) {
+				continue;
+			}
+
+			if ( ! isset( $orders_by_id[ $order_id ] ) ) {
+				Logger::warning(
+					sprintf(
+						/* translators: %d: WC order ID requested via order_ids[] that was not found. */
+						__( 'order_ids fetch: order %d not found.', 'woocommerce-shipstation-integration' ),
+						$order_id
+					)
+				);
+				continue;
+			}
+
+			/**
+			 * Allow third party to change the order object.
+			 *
+			 * @param WC_Order $order Order object.
+			 *
+			 * @since 4.1.42
+			 */
+			$order = apply_filters(
+				'woocommerce_shipstation_export_get_order',
+				$orders_by_id[ $order_id ]
+			);
+
+			if ( ! Order_Util::is_wc_order( $order ) ) {
+				/* translators: 1: order id */
+				$this->log( sprintf( __( 'Order %s can not be found.', 'woocommerce-shipstation-integration' ), $order_id ) );
+				continue;
+			}
+
+			$sales_orders[]   = $this->get_order_data( $order );
+			$orders_to_mark[] = $order;
+		}
+
+		Order_Util::mark_orders_exported_bulk( $orders_to_mark );
+
+		$count = count( $sales_orders );
+
+		return new WP_REST_Response(
+			array(
+				'sales_orders' => $sales_orders,
+				'pagination'   => array(
+					'page'        => 1,
+					'per_page'    => $count,
+					'total'       => $count,
+					'total_pages' => 1,
+					'has_more'    => false,
+				),
+			),
+			200
+		);
+	}
+
+	/**
 	 * Bulk-fetch orders and return them indexed by ID.
 	 *
 	 * This is intentionally a second query. The upstream `wc_get_orders()` call in
@@ -509,20 +637,25 @@ class Orders_Controller extends API_Controller {
 	 * follow are cache hits.
 	 *
 	 * @since 5.0.4
+	 * @since 5.1.0 Added the $extra_query_args parameter.
 	 *
-	 * @param int[] $order_ids Order IDs to fetch.
+	 * @param int[] $order_ids        Order IDs to fetch.
+	 * @param array $extra_query_args Optional extra args merged into the wc_get_orders() call.
 	 * @return array<int, WC_Order> Order objects indexed by ID.
 	 */
-	private function get_orders_by_ids( array $order_ids ): array {
+	private function get_orders_by_ids( array $order_ids, array $extra_query_args = array() ): array {
 		if ( empty( $order_ids ) ) {
 			return array();
 		}
 
 		$orders = wc_get_orders(
-			array(
-				'type'     => 'shop_order',
-				'post__in' => $order_ids,
-				'limit'    => -1,
+			array_merge(
+				array(
+					'type'     => 'shop_order',
+					'post__in' => $order_ids,
+					'limit'    => -1,
+				),
+				$extra_query_args
 			)
 		);
 
@@ -947,6 +1080,19 @@ class Orders_Controller extends API_Controller {
 		$gift         = $this->get_gift( $order );
 		$address_data = Order_Util::get_address_data( $order );
 
+		$shipping_preferences = array(
+			'gift'             => $gift['is_gift'],
+			'shipping_service' => Order_Util::get_shipping_methods( $order, false ),
+		);
+
+		// Surface the customer's selected ShipStation Checkout Rates code so
+		// ShipStation can auto-assign the chosen carrier service. Omitted entirely
+		// when the order has no ShipStation rate code (e.g. a flat-rate shipment).
+		$preplanned_fulfillment_id = Order_Util::get_checkout_rate_code( $order );
+		if ( '' !== $preplanned_fulfillment_id ) {
+			$shipping_preferences['preplanned_fulfillment_id'] = $preplanned_fulfillment_id;
+		}
+
 		return array(
 			'requested_fulfillment_id' => $fulfillment_id,
 			'ship_to'                  => array(
@@ -962,10 +1108,7 @@ class Orders_Controller extends API_Controller {
 			),
 			'items'                    => $fulfillment_items,
 			'extensions'               => $this->get_custom_fields( $order ),
-			'shipping_preferences'     => array(
-				'gift'             => $gift['is_gift'],
-				'shipping_service' => Order_Util::get_shipping_methods( $order, false ),
-			),
+			'shipping_preferences'     => $shipping_preferences,
 		);
 	}
 

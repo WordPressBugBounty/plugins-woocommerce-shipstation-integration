@@ -152,11 +152,65 @@ if ( Checkout_Rates_Options::should_render_settings_section() ) {
 	);
 }
 
+// Always-visible opt-in checkbox (SHIPSTN-133). Ticking it enables the
+// WordPress.com transport — the same gate the WC_SHIPSTATION_WPCOM_TRANSPORT
+// constant and the wc_shipstation_wpcom_transport_enabled filter still drive.
+// Off by default: no behavior change for existing merchants until they opt in.
+$wpcom_transport_description = __( 'Routes ShipStation traffic to your store through WordPress.com, providing a more stable connection that bypasses firewall and security-plugin blocks that can intercept direct requests.', 'woocommerce-shipstation-integration' );
+
+$fields['wpcom_transport_enabled'] = array(
+	'title'    => __( 'WordPress.com Connection', 'woocommerce-shipstation-integration' ),
+	'label'    => __( 'Enable WordPress.com Transport', 'woocommerce-shipstation-integration' ),
+	'type'     => 'checkbox',
+	// Render the description below the checkbox (no tooltip). desc_tip => true
+	// would fold it into a "?" tooltip that WC 10.8 misaligns on checkbox rows;
+	// WC's own checkbox settings put the help text below the field.
+	'desc_tip' => false,
+	'default'  => 'no',
+);
+
+// When the constant or filter forces the transport on, the checkbox can't turn
+// it off (the override wins — see Features::is_wpcom_transport_enabled()). Show
+// it checked + disabled and name which override is in control, rather than
+// letting it render unchecked/editable and misrepresent the live state.
+if ( Features::is_wpcom_transport_forced_by_override() ) {
+	$override_source = ( defined( 'WC_SHIPSTATION_WPCOM_TRANSPORT' ) && WC_SHIPSTATION_WPCOM_TRANSPORT )
+		? '<code>WC_SHIPSTATION_WPCOM_TRANSPORT</code>'
+		: '<code>wc_shipstation_wpcom_transport_enabled</code>';
+
+	$fields['wpcom_transport_enabled']['disabled']          = true;
+	$fields['wpcom_transport_enabled']['custom_attributes'] = array( 'checked' => 'checked' );
+
+	$wpcom_transport_description .= '<br>' . sprintf(
+		/* translators: %s: the constant or filter name (wrapped in a <code> tag) that is forcing the setting on. */
+		esc_html__( 'This option is locked on by %s in your site configuration and cannot be changed here. Remove it to control this setting from this checkbox.', 'woocommerce-shipstation-integration' ),
+		$override_source
+	);
+}
+
+$fields['wpcom_transport_enabled']['description'] = $wpcom_transport_description;
+
+// Pre-GA safety (SHIPSTN-142): keep the WordPress.com transport dev-gated until
+// the full experience (auto-generated credential banner, REST API key list, and
+// final copy) ships. Without a developer override (the
+// WC_SHIPSTATION_WPCOM_TRANSPORT constant or the
+// wc_shipstation_wpcom_transport_enabled filter) the merchant checkbox is not
+// registered, so the feature stays off for merchants and the connection block
+// below — gated by the same predicate — does not render either. UNDO this when
+// the feature goes GA (the undo ships with the banner work).
+if ( ! Features::is_wpcom_transport_forced_by_override() ) {
+	unset( $fields['wpcom_transport_enabled'] );
+}
+
+// Connection management lives below the checkbox and only renders once the
+// transport is enabled (checkbox, constant, or filter). When connected it also
+// surfaces a CTA to the existing "View Authentication Data" modal so the
+// merchant can copy the four values ShipStation's connection form needs.
 if ( Features::is_wpcom_transport_enabled() ) {
 	$connection = Main::instance()->get_wpcom_connection();
 
 	if ( null === $connection ) {
-		$button_html = '<p>' . esc_html__( 'Jetpack connection package is unavailable. Reinstall plugin dependencies to enable this feature.', 'woocommerce-shipstation-integration' ) . '</p>';
+		$button_html = '<p>' . esc_html__( 'The WordPress.com connection package is unavailable. Reinstall plugin dependencies to enable this feature.', 'woocommerce-shipstation-integration' ) . '</p>';
 	} elseif ( $connection->is_connected() ) {
 		$wpcom_blog_id = $connection->get_blog_id();
 		$action_url    = wp_nonce_url(
@@ -164,9 +218,10 @@ if ( Features::is_wpcom_transport_enabled() ) {
 			'shipstation_wpcom_disconnect'
 		);
 		$button_html   = sprintf(
-			'<p><strong>%s</strong> %s</p><p><a href="%s" class="button">%s</a></p>',
+			'<p><strong>%s</strong> %s</p><p><button type="button" class="button button-primary shipstation-view-auth">%s</button> <a href="%s" class="button">%s</a></p>',
 			esc_html__( 'Connected to WordPress.com.', 'woocommerce-shipstation-integration' ),
 			$wpcom_blog_id ? esc_html( sprintf( /* translators: %d: WordPress.com blog id */ __( 'Blog ID: %d', 'woocommerce-shipstation-integration' ), $wpcom_blog_id ) ) : '',
+			esc_html__( 'View ShipStation connection details', 'woocommerce-shipstation-integration' ),
 			esc_url( $action_url ),
 			esc_html__( 'Disconnect from WordPress.com', 'woocommerce-shipstation-integration' )
 		);
@@ -183,9 +238,8 @@ if ( Features::is_wpcom_transport_enabled() ) {
 	}
 
 	$fields['wpcom_connection'] = array(
-		'title'       => __( 'WordPress.com Connection', 'woocommerce-shipstation-integration' ),
 		'type'        => 'title',
-		'description' => $button_html . '<p class="description">' . esc_html__( 'Connecting to WordPress.com lets ShipStation reach your store through the Jetpack channel, bypassing firewall and security-plugin blocks that can intercept direct requests. (Experimental.)', 'woocommerce-shipstation-integration' ) . '</p>',
+		'description' => $button_html,
 	);
 }
 

@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use Automattic\WooCommerce\Utilities\FeaturesUtil;
+use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Shipping_Method;
 use WooCommerce\Shipping\ShipStation\REST_API_Loader;
 use WC_ShipStation_Privacy;
@@ -97,6 +98,7 @@ class Main {
 		add_action( 'woocommerce_init', array( $this, 'load_rest_api' ) );
 
 		add_filter( 'woocommerce_shipping_methods', array( $this, 'register_shipping_methods' ) );
+		add_filter( 'woocommerce_hidden_order_itemmeta', array( $this, 'hide_internal_order_item_meta' ) );
 	}
 
 	/**
@@ -206,6 +208,15 @@ class Main {
 			return $methods;
 		}
 
+		// Checkout Rates can only be provisioned over the REST API — ShipStation pushes
+		// the rates URL via a REST endpoint and there is no XML path. Without a stored
+		// rates URL the method can never return rates, so don't offer it in the shipping
+		// zone's method list. Mirrors the runtime gate in
+		// Checkout_Rates_Shipping_Method::calculate_shipping().
+		if ( ! Checkout_Rates_Options::is_configured() ) {
+			return $methods;
+		}
+
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/interface-checkout-rates-api-client.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-shipstation-unit-converter.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-invalid-payload-exception.php';
@@ -276,5 +287,24 @@ class Main {
 		if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
 			FeaturesUtil::declare_compatibility( 'custom_order_tables', WC_SHIPSTATION_FILE, true );
 		}
+	}
+
+	/**
+	 * Hide ShipStation Checkout Rates internal shipping-item meta from the admin
+	 * order screen and orders list table. The underscore prefix already hides
+	 * these from the storefront, emails, and the Store API; wp-admin renders item
+	 * meta with an empty hide-prefix, so it needs the allow-list filter instead.
+	 *
+	 * @since 5.0.9
+	 *
+	 * @param array $hidden Hidden order item meta keys.
+	 *
+	 * @return array
+	 */
+	public function hide_internal_order_item_meta( array $hidden ): array {
+		$hidden[] = Checkout_Rates_Options::RATE_CODE_META_KEY;
+		$hidden[] = Checkout_Rates_Options::QUOTE_ID_META_KEY;
+
+		return $hidden;
 	}
 }

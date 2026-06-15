@@ -317,6 +317,36 @@ class Order_Util {
 	}
 
 	/**
+	 * Get the ShipStation Checkout Rates code stored on the order's shipping item(s).
+	 *
+	 * Reads the protected meta written when the customer selects a ShipStation rate
+	 * at checkout. Returns the first non-empty code found across the order's shipping
+	 * items, or '' when none carry one (e.g. a flat-rate shipment). The REST export
+	 * maps this to shipping_preferences.preplanned_fulfillment_id.
+	 *
+	 * @since 5.0.9
+	 *
+	 * @param WC_Order $order Order object.
+	 *
+	 * @return string Rate code (e.g. 'dos_…'), or '' when absent.
+	 */
+	public static function get_checkout_rate_code( WC_Order $order ): string {
+		foreach ( $order->get_shipping_methods() as $shipping_method ) {
+			if ( ! $shipping_method instanceof \WC_Order_Item_Shipping ) {
+				continue;
+			}
+
+			$rate_code = $shipping_method->get_meta( Checkout\Checkout_Rates_Options::RATE_CODE_META_KEY );
+
+			if ( is_scalar( $rate_code ) && '' !== (string) $rate_code ) {
+				return (string) $rate_code;
+			}
+		}
+
+		return '';
+	}
+
+	/**
 	 * Get all WooCommerce order statuses.
 	 *
 	 * @return array

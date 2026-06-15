@@ -639,7 +639,7 @@ class Auth_Controller {
 	 */
 	public static function get_auth_button_html(): string {
 		return sprintf(
-			'<button type="button" id="shipstation-view-auth" class="button button-primary">%s</button>',
+			'<button type="button" id="shipstation-view-auth" class="button button-primary shipstation-view-auth">%s</button>',
 			esc_html__( 'View Authentication Data', 'woocommerce-shipstation-integration' )
 		);
 	}

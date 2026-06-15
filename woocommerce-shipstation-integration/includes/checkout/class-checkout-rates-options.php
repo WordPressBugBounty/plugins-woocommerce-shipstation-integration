@@ -30,6 +30,21 @@ final class Checkout_Rates_Options {
 	const SHIPPING_METHOD_ID = 'shipstation_checkout_rates';
 
 	/**
+	 * Order shipping item meta key for the selected quote's rate code (the
+	 * ShipStation `code`, e.g. `dos_…`). Underscore-prefixed so WooCommerce
+	 * treats it as protected and hides it from the admin order screen, the
+	 * customer order/email views, and the Store API. Exported as
+	 * `shipping_preferences.preplanned_fulfillment_id`.
+	 */
+	const RATE_CODE_META_KEY = '_shipstation_rate_code';
+
+	/**
+	 * Order shipping item meta key for the response-level quote id. Protected
+	 * (underscore-prefixed) for the same reasons as RATE_CODE_META_KEY.
+	 */
+	const QUOTE_ID_META_KEY = '_shipstation_quote_id';
+
+	/**
 	 * Option key for the ShipStation-issued rates URL.
 	 */
 	const OPTION_RATES_URL = 'wc_shipstation_checkout_rates_url';

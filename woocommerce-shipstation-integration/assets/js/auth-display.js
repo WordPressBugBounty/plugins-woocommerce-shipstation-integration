@@ -16,7 +16,7 @@
 		bindEvents: function () {
 			// Delegated clicks.
 			document.addEventListener( 'click', function ( event ) {
-				const openBtn   = event.target.closest( '#shipstation-view-auth' );
+				const openBtn   = event.target.closest( '.shipstation-view-auth' );
 				const closeBtn  = event.target.closest( '.shipstation-modal-close' );
 				const backdrop  = event.target.closest( '.shipstation-modal-backdrop' );
 				const copyBtn   = event.target.closest( '.shipstation-copy-btn' );

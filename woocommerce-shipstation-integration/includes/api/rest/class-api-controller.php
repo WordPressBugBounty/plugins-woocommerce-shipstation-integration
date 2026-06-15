@@ -49,20 +49,29 @@ class API_Controller {
 	/**
 	 * Permission gate shared by every /wc-shipstation/v1/* route.
 	 *
-	 * Behaviour depends on the WPCOM transport flag:
+	 * Behaviour depends on the WPCOM transport flag AND whether the request
+	 * actually arrived through the WPCOM proxy, signalled by the presence of the
+	 * `X-ShipStation-Authorization` relay header:
 	 *
-	 *  - Flag ON: the request must carry the ShipStation-issued Basic Auth
-	 *    credential. On match, the current user is set to that key's owner so
-	 *    the downstream wc_rest_check_manager_permissions check sees an
-	 *    authenticated identity even on `?rest_route=` URLs (which bypass
-	 *    WC_REST_Authentication's `/wp-json/wc-*` prefix test). The
+	 *  - Flag ON + proxied (relay header present): the request must carry the
+	 *    ShipStation-issued Basic Auth credential. On match, the current user is
+	 *    set to that key's owner so the downstream wc_rest_check_manager_permissions
+	 *    check sees an authenticated identity even on `?rest_route=` URLs (which
+	 *    bypass WC_REST_Authentication's `/wp-json/wc-*` prefix test). The
 	 *    `wc_shipstation_user_can_manage_wc` filter is then applied as the
 	 *    second layer.
+	 *  - Flag ON + direct (no relay header): the strict step is skipped. WC core's
+	 *    `WC_REST_Authentication` remains the auth authority, which preserves the
+	 *    query-string consumer_key/secret fallback that misconfigured hosts
+	 *    (CGI/FastCGI, header-stripping WAFs) depend on. Scoping the strict gate to
+	 *    proxied requests is what keeps that fallback working once the flag is on
+	 *    (SHIPSTN-132).
 	 *  - Flag OFF: the strict step is skipped. The public
 	 *    `wc_shipstation_user_can_manage_wc` filter is the sole authority,
 	 *    preserving trunk semantics for sites that have not opted in.
 	 *
 	 * @since 5.0.5
+	 * @since 5.0.9 Strict gate scoped to proxied requests (relay header present).
 	 *
 	 * @param WP_REST_Request $request Current REST request.
 	 * @param string          $context wc_rest_check_manager_permissions context, e.g. 'attributes'.
@@ -75,7 +84,13 @@ class API_Controller {
 	 *                       wrong, or the key owner cannot be resolved).
 	 */
 	protected function check_namespace_permission( WP_REST_Request $request, string $context, string $action ) {
-		if ( Features::is_wpcom_transport_enabled() ) {
+		// The WPCOM proxy relays the merchant credential on X-ShipStation-Authorization;
+		// its presence is the only signal that the request actually came through the
+		// proxy. Scope the strict gate to proxied requests so direct calls keep WC
+		// core's auth (including the query-string credential fallback) as the
+		// authority even when the transport flag is on (SHIPSTN-132).
+		$is_proxied = '' !== (string) $request->get_header( 'x_shipstation_authorization' );
+		if ( Features::is_wpcom_transport_enabled() && $is_proxied ) {
 			$row = $this->resolve_authenticated_api_key_row( $request );
 			if ( null === $row ) {
 				return $this->invalid_credentials_error();
@@ -139,15 +154,16 @@ class API_Controller {
 	}
 
 	/**
-	 * Validate the ShipStation HTTP Basic Auth credential against any row in
-	 * woocommerce_api_keys whose hashed consumer_key matches the inbound one.
+	 * Validate the inbound Basic Auth credential and return the matching
+	 * woocommerce_api_keys row on success, or null on any failure. The strict
+	 * gate uses the returned row's user_id to authenticate the request without
+	 * a second DB lookup.
 	 *
-	 * The Jetpack/WPCOM transport only proves a request originated from WPCOM,
-	 * not that the original caller knows the merchant's credential. Every
-	 * /wc-shipstation/v1/* permission_callback runs this check so the
-	 * consumer_key/secret remains the single source of truth for caller
-	 * identity, regardless of whether the request arrived directly or through
-	 * the WPCOM proxy.
+	 * The credential is read exclusively from the `X-ShipStation-Authorization`
+	 * relay header: the only caller is the strict gate in
+	 * check_namespace_permission(), which runs only for proxied requests (relay
+	 * header present). Direct (non-proxied) calls are authenticated upstream by
+	 * WC core's WC_REST_Authentication, not here.
 	 *
 	 * The lookup hashes the inbound consumer_key and queries the row by that
 	 * hash. We deliberately do not pin to `woocommerce_shipstation_api_key_id`:
@@ -160,28 +176,13 @@ class API_Controller {
 	 * @since 5.0.5
 	 *
 	 * @param WP_REST_Request $request Current REST request.
-	 * @return bool True iff a Basic Authorization header was present and the
-	 *              decoded credentials match a row in woocommerce_api_keys.
-	 */
-	public function check_basic_auth_credential( WP_REST_Request $request ): bool {
-		return null !== $this->resolve_authenticated_api_key_row( $request );
-	}
-
-	/**
-	 * Validate the inbound Basic Auth credential and return the matching
-	 * woocommerce_api_keys row on success, or null on any failure. The gate
-	 * uses the returned row's user_id to authenticate the request without a
-	 * second DB lookup; check_basic_auth_credential() is the bool-returning
-	 * public facade for callers that only need pass/fail.
-	 *
-	 * @since 5.0.5
-	 *
-	 * @param WP_REST_Request $request Current REST request.
 	 * @return \stdClass|null woocommerce_api_keys row (user_id, consumer_key,
 	 *                       consumer_secret) on success; null on rejection.
 	 */
 	private function resolve_authenticated_api_key_row( WP_REST_Request $request ): ?\stdClass {
-		list( $consumer_key, $consumer_secret ) = $this->extract_basic_auth_credentials( $request );
+		list( $consumer_key, $consumer_secret ) = $this->parse_basic_auth_payload(
+			(string) $request->get_header( 'x_shipstation_authorization' )
+		);
 		if ( '' === $consumer_key || '' === $consumer_secret ) {
 			Logger::debug( 'ShipStation Basic Auth rejected: malformed_authorization' );
 			return null;
@@ -233,45 +234,6 @@ class API_Controller {
 	}
 
 	/**
-	 * Resolve a Basic Auth credential pair from any source PHP exposes.
-	 *
-	 * Precedence:
-	 *
-	 *  1. `X-ShipStation-Authorization` (the WPCOM proxy relay header). Checked
-	 *     first because Apache mod_php (and similar fronts) auto-populate
-	 *     `PHP_AUTH_USER` / `PHP_AUTH_PW` from any inbound `Authorization: Basic …`
-	 *     header. If an unrelated upstream (LB healthcheck, basic-auth-protected
-	 *     staging, developer error) lands a Basic header on the request, those
-	 *     `$_SERVER` vars get filled and would silently short-circuit the
-	 *     proxy-relayed credential we actually need to evaluate.
-	 *  2. `PHP_AUTH_USER` / `PHP_AUTH_PW` for direct calls on hosts where
-	 *     mod_php absorbed the standard `Authorization` header.
-	 *  3. The standard `Authorization` header chain (with CGI / FastCGI fallbacks
-	 *     in `get_authorization_header()`).
-	 *
-	 * @param WP_REST_Request $request Current REST request.
-	 * @return array{0: string, 1: string} Consumer key and secret, both '' when absent.
-	 */
-	private function extract_basic_auth_credentials( WP_REST_Request $request ): array {
-		$relay_header = (string) $request->get_header( 'x_shipstation_authorization' );
-		if ( '' !== $relay_header ) {
-			return $this->parse_basic_auth_payload( $relay_header );
-		}
-
-		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- credentials are pre-validated; further sanitisation would corrupt valid secrets containing special characters.
-		if ( ! empty( $_SERVER['PHP_AUTH_USER'] ) && ! empty( $_SERVER['PHP_AUTH_PW'] ) ) {
-			return array(
-				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- raw credential, see comment above.
-				(string) wp_unslash( $_SERVER['PHP_AUTH_USER'] ),
-				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- raw credential, see comment above.
-				(string) wp_unslash( $_SERVER['PHP_AUTH_PW'] ),
-			);
-		}
-
-		return $this->parse_basic_auth_payload( $this->get_authorization_header( $request ) );
-	}
-
-	/**
 	 * Decode an `Authorization: Basic …` header value into a consumer key / secret pair.
 	 *
 	 * @param string $authorization Raw header value.
@@ -289,49 +251,5 @@ class API_Controller {
 
 		list( $key, $secret ) = explode( ':', $decoded, 2 );
 		return array( (string) $key, (string) $secret );
-	}
-
-	/**
-	 * Read the standard `Authorization` header from the request, with fallbacks
-	 * for CGI/FastCGI environments that strip it before WordPress sees it.
-	 *
-	 * Hosts often relocate Authorization to REDIRECT_HTTP_AUTHORIZATION via an
-	 * .htaccess RewriteRule; some only surface it through getallheaders(). We
-	 * try each so a correctly-configured site does not see spurious 401s. The
-	 * WPCOM proxy relay header (`X-ShipStation-Authorization`) is consumed
-	 * higher up in `extract_basic_auth_credentials()`.
-	 *
-	 * @param WP_REST_Request $request Current REST request.
-	 * @return string Header value, or empty string when absent.
-	 */
-	private function get_authorization_header( WP_REST_Request $request ): string {
-		$header = (string) $request->get_header( 'authorization' );
-		if ( '' !== $header ) {
-			return $header;
-		}
-
-		if ( ! empty( $_SERVER['HTTP_AUTHORIZATION'] ) ) {
-			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- raw header, see extract_basic_auth_credentials() comment.
-			return (string) wp_unslash( $_SERVER['HTTP_AUTHORIZATION'] );
-		}
-		if ( ! empty( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ) ) {
-			// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- raw header, see extract_basic_auth_credentials() comment.
-			return (string) wp_unslash( $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] );
-		}
-
-		if ( function_exists( 'getallheaders' ) ) {
-			$headers = getallheaders();
-			if ( is_array( $headers ) ) {
-				foreach ( $headers as $name => $value ) {
-					// Skip non-string values: some hosts return arrays for repeated
-					// headers, and a (string) cast on those silently coerces to 'Array'.
-					if ( is_string( $value ) && 0 === strcasecmp( (string) $name, 'Authorization' ) ) {
-						return $value;
-					}
-				}
-			}
-		}
-
-		return '';
 	}
 }

@@ -113,8 +113,8 @@ final class Checkout_Rates_Response_Mapper {
 			'label'     => $label,
 			'cost'      => (float) $quote['cost']['amount'],
 			'meta_data' => array(
-				'shipstation_rate_code' => $code,
-				'shipstation_quote_id'  => $quote_id,
+				Checkout_Rates_Options::RATE_CODE_META_KEY => $code,
+				Checkout_Rates_Options::QUOTE_ID_META_KEY  => $quote_id,
 			),
 		);
 
