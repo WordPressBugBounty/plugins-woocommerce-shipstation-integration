@@ -2,10 +2,10 @@
 # This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: ShipStation for WooCommerce 5.1.0\n"
+"Project-Id-Version: ShipStation for WooCommerce 5.1.1\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/woocommerce-shipstation\n"
-"POT-Creation-Date: 2026-06-15 07:01:42+00:00\n"
+"POT-Creation-Date: 2026-06-22 09:12:03+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -496,15 +496,15 @@ msgid ""
 "download %s here."
 msgstr ""
 
-#: includes/class-main.php:275
+#: includes/class-main.php:292
 msgid "Settings"
 msgstr ""
 
-#: includes/class-main.php:276
+#: includes/class-main.php:293
 msgid "Support"
 msgstr ""
 
-#: includes/class-main.php:277
+#: includes/class-main.php:294
 msgid "Docs"
 msgstr ""
 
@@ -530,7 +530,7 @@ msgstr ""
 msgid "Input params: %s"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:195
+#: includes/class-wc-shipstation-integration.php:196
 #: includes/class-wc-shipstation-privacy.php:22
 #: includes/data/data-settings.php:70 includes/data/data-settings.php:76
 #. translators: 1: <strong>ShipStation</strong>, 2: ShipStation mode
@@ -538,74 +538,74 @@ msgstr ""
 msgid "ShipStation"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:196
+#: includes/class-wc-shipstation-integration.php:197
 msgid ""
 "ShipStation allows you to retrieve &amp; manage orders, then print labels "
 "&amp; packing slips with ease."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:319
+#: includes/class-wc-shipstation-integration.php:320
 msgid "Choose which order statuses to export to ShipStation."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:320
+#: includes/class-wc-shipstation-integration.php:321
 msgid "Each selected status must also be mapped to a ShipStation status."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:321
+#: includes/class-wc-shipstation-integration.php:322
 msgid ""
 "Mappings are managed below or in your ShipStation account (depending on "
 "your Status Mapping Mode)."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:324
-#: includes/class-wc-shipstation-integration.php:780
+#: includes/class-wc-shipstation-integration.php:325
+#: includes/class-wc-shipstation-integration.php:803
 msgid "All statuses are selected for export."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:326
-#: includes/class-wc-shipstation-integration.php:779
+#: includes/class-wc-shipstation-integration.php:327
+#: includes/class-wc-shipstation-integration.php:802
 msgid "Excluded from export:"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:337
+#: includes/class-wc-shipstation-integration.php:338
 #. translators: %s: comma-separated list of WC order status names
 msgid ""
 "Selected for export but not mapped to a ShipStation status: %s. Map them "
 "below so their orders are exported correctly."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:428
+#: includes/class-wc-shipstation-integration.php:429
 msgid ""
 "Settings saved, but some selected export statuses are not mapped to a "
 "ShipStation status. Please review the settings below."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:781
+#: includes/class-wc-shipstation-integration.php:804
 msgid "Selected for export but not mapped to a ShipStation status:"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:782
+#: includes/class-wc-shipstation-integration.php:805
 msgid "Map them below so their orders are exported correctly."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:817
+#: includes/class-wc-shipstation-integration.php:840
 msgid "This feature requires WooCommerce 9.7.0 or higher."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:857
+#: includes/class-wc-shipstation-integration.php:880
 msgid "Action failed. Please refresh the page and retry."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:862
+#: includes/class-wc-shipstation-integration.php:885
 msgid "Cheatin&#8217; huh?"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:884
+#: includes/class-wc-shipstation-integration.php:907
 msgid "ShipStation logo"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:894
+#: includes/class-wc-shipstation-integration.php:917
 #. translators: %s: ShipStation URL
 msgid ""
 "To begin printing shipping labels with ShipStation head over to <a "
@@ -613,14 +613,14 @@ msgid ""
 "target=\"_blank\">ShipStation.com</a> and log in or create a new account."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:909
+#: includes/class-wc-shipstation-integration.php:932
 msgid ""
 "After logging in, add WooCommerce as a selling channel in ShipStation. Use "
 "your store's Auth Key and REST API credentials to connect. Once connected "
 "you're good to go!"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:926
+#: includes/class-wc-shipstation-integration.php:949
 #. translators: %1$s: ShipStation plugin settings URL, %2$s: ShipStation
 #. documentation URL
 msgid ""

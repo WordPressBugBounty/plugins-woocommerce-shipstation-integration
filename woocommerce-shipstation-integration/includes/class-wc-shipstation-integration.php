@@ -13,6 +13,7 @@ use WooCommerce\Shipping\ShipStation\Order_Util;
 use Automattic\WooCommerce\Enums\OrderInternalStatus;
 use WooCommerce\Shipping\ShipStation\Logger;
 use WooCommerce\Shipping\ShipStation\Auth_Controller;
+use WooCommerce\Shipping\ShipStation\Features;
 
 /**
  * WC_ShipStation_Integration Class
@@ -460,6 +461,11 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 * stored mappings on every save. Pre-fill the missing keys from `get_option()`
 	 * so the values round-trip unchanged, matching the merchant's expectation that
 	 * saving while ShipStation owns the mappings is a no-op for those fields.
+	 *
+	 * The WPCOM-transport checkbox gets the same pre-fill when a constant or
+	 * filter override renders it disabled, and the form fields are rebuilt after
+	 * the save so the conditional WordPress.com connection section reflects the
+	 * new opt-in value on the same request (SHIPSTN-141).
 	 */
 	public function update_shipstation_options() {
 		$post_data = $this->get_post_data();
@@ -491,12 +497,29 @@ class WC_ShipStation_Integration extends WC_Integration {
 			$this->set_post_data( $post_data );
 		}
 
+		// The WPCOM-transport checkbox renders disabled while a constant or
+		// filter override forces the transport on (see data-settings.php), so
+		// it is absent from the POST payload and validate_checkbox_field()
+		// would coerce the gap to `no`, clearing a stored opt-in. Round-trip
+		// the stored value instead; with no override active an absent key is a
+		// genuine untick and must keep clearing the option.
+		$wpcom_field_key = $this->get_field_key( 'wpcom_transport_enabled' );
+		if (
+			! isset( $post_data[ $wpcom_field_key ] )
+			&& 'yes' === $this->get_option( 'wpcom_transport_enabled' )
+			&& Features::is_wpcom_transport_forced_by_override()
+		) {
+			$post_data[ $wpcom_field_key ] = '1';
+			$this->set_post_data( $post_data );
+		}
+
 		$this->process_admin_options();
 
-		// Refresh the export_statuses description so the same-request render after save
-		// reflects the newly-saved option values. Avoids re-running the full
-		// init_form_fields()/data-settings.php include just to refresh one string.
-		$this->form_fields['export_statuses']['description'] = $this->get_export_statuses_description();
+		// Rebuild the form fields from the just-persisted options so the
+		// same-request render is current: the conditional WordPress.com
+		// connection section appears/disappears with the new opt-in value and
+		// the export_statuses description reflects the new selections.
+		$this->init_form_fields();
 
 		$this->validate_export_statuses_mapping();
 	}

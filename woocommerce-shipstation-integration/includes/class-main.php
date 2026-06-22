@@ -111,6 +111,13 @@ class Main {
 			return;
 		}
 
+		// get_wpcom_connection() re-runs this lazily, so a caller can reach it
+		// before load_files() has required the class (early boot or a partial
+		// install). Stay at "no facade" rather than fataling.
+		if ( ! class_exists( WPCOM_Connection::class ) ) {
+			return;
+		}
+
 		$this->wpcom_connection = new WPCOM_Connection();
 		$this->wpcom_connection->bootstrap();
 	}
@@ -118,9 +125,19 @@ class Main {
 	/**
 	 * WPCOM connection facade accessor.
 	 *
+	 * Re-runs the gated init when the facade is missing: the settings-checkbox
+	 * source of the feature flag can turn on after plugins_loaded (the settings
+	 * save persists mid-request), in which case maybe_init_wpcom_connection()
+	 * already skipped. Late bootstrap still wires this request's admin hooks;
+	 * Jetpack's own plugins_loaded-time configuration completes on the next load.
+	 *
 	 * @return WPCOM_Connection|null Null when the feature flag is off.
 	 */
 	public function get_wpcom_connection(): ?WPCOM_Connection {
+		if ( null === $this->wpcom_connection ) {
+			$this->maybe_init_wpcom_connection();
+		}
+
 		return $this->wpcom_connection;
 	}
 

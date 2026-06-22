@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, automattic
 Requires at least: 6.9
 Tested up to: 7.0
-WC tested up to: 10.8
-WC requires at least: 10.6
+WC tested up to: 10.9
+WC requires at least: 10.7
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.1.0
+Stable tag: 5.1.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -74,8 +74,12 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 
 == Changelog ==
 
+= 5.1.1 - 2026-06-22 =
+* Tweak - WooCommerce 10.9 Compatibility.
+
 = 5.1.0 - 2026-06-15 =
 * Add   - GET /orders now accepts order_ids[] to fetch specific orders by ID, bypassing the status filter and pagination.
+* Fix   - Diagnostics endpoint caused excessive database queries on high-traffic sites; now reads environment data directly from PHP/WC/WP constants with a 5-minute transient cache.
 
 = 5.0.9 - 2026-06-01 =
 * Fix   - REST shipnotify: fire the legacy API action so third-party compatibility modules (e.g. WooCommerce Composite Products, Product Bundles) that register item-filtering hooks on `woocommerce_api_wc_shipstation` are active when shippable item counts are calculated.

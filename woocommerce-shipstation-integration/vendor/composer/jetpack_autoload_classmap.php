@@ -374,6 +374,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Checkout_Rates_Controller_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Diagnostics_Controller_Get_Details_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Diagnostics_Controller_Get_Details_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Diagnostics_Controller_Permission_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Diagnostics_Controller_Permission_Test.php'
@@ -493,5 +497,9 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\WPCOM_Connection_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/WPCOM_Connection_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\WPCOM_Transport_Settings_Save_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/WPCOM_Transport_Settings_Save_Test.php'
 	),
 );

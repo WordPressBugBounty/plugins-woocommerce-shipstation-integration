@@ -53,6 +53,8 @@ class REST_API_Loader {
 		// Include Orders REST API class file.
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/api/rest/class-diagnostics-controller.php';
 
+		Diagnostics_Controller::register_hooks();
+
 		// Include Checkout Rates REST API class file (gated by feature flag).
 		if ( $this->checkout_rates_enabled ) {
 			require_once WC_SHIPSTATION_ABSPATH . 'includes/api/rest/class-checkout-rates-controller.php';
