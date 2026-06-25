@@ -1,5 +1,10 @@
 *** ShipStation for WooCommerce ***
 
+= 5.2.0 - 2026-06-25 =
+* Add   - A settings toggle to enable the WordPress.com transport, no developer feature flag required.
+* Add   - Manage credentials, monitor connection health, and troubleshoot issues from a new connection section on the ShipStation settings tab.
+* Fix   - Restore ShipStation shipment notifications for orders containing a Product Bundle that was changed from Assembled to Unassembled after purchase.
+
 = 5.1.1 - 2026-06-22 =
 * Tweak - WooCommerce 10.9 Compatibility.
 

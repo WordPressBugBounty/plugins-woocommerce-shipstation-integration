@@ -1130,7 +1130,8 @@ class Orders_Controller extends API_Controller {
 		$item_id                 = $item->get_id();
 		$is_order_item_a_product = $item instanceof WC_Order_Item_Product;
 		$product                 = $is_order_item_a_product ? $item->get_product() : false;
-		$item_needs_no_shipping  = ! $product || ! $product->needs_shipping();
+		$item_needs_shipping     = Order_Util::item_needs_shipping( $item, $product );
+		$item_needs_no_shipping  = ! $item_needs_shipping;
 		$item_not_a_fee          = 'fee' !== $item->get_type();
 
 		/**
@@ -1159,7 +1160,7 @@ class Orders_Controller extends API_Controller {
 		}
 
 		// handle product specific data.
-		if ( $is_order_item_a_product && $product && $product->needs_shipping() ) {
+		if ( $is_order_item_a_product && $product && $item_needs_shipping ) {
 			/**
 			 * Handle product specific data.
 			 *

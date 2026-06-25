@@ -9,9 +9,6 @@
 
 use Automattic\WooCommerce\Enums\OrderInternalStatus;
 use WooCommerce\Shipping\ShipStation\Order_Util;
-use WooCommerce\Shipping\ShipStation\Auth_Controller;
-use WooCommerce\Shipping\ShipStation\Features;
-use WooCommerce\Shipping\ShipStation\Main;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -21,20 +18,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 $statuses = Order_Util::get_all_order_statuses();
 
 $fields = array(
-	'auth_key'                                             => array(
-		'title'             => __( 'Authentication Key', 'woocommerce-shipstation-integration' ),
-		'description'       => Auth_Controller::get_auth_button_html(),
-		'default'           => '',
-		'type'              => 'text',
-		'desc_tip'          => __( 'This is the <code>Auth Key</code> you set in ShipStation and allows ShipStation to communicate with your store.', 'woocommerce-shipstation-integration' ),
-		'custom_attributes' => array(
-			'readonly' => 'readonly',
-			'hidden'   => 'hidden',
-		),
-		'value'             => WC_ShipStation_Integration::$auth_key,
-	),
 	'export_statuses'                                      => array(
-		'title'             => __( 'Export Order Statuses&hellip;', 'woocommerce-shipstation-integration' ),
+		'title'             => __( 'Export Order Statuses', 'woocommerce-shipstation-integration' ),
 		'type'              => 'multiselect',
 		'options'           => $statuses,
 		'class'             => 'chosen_select',
@@ -46,7 +31,7 @@ $fields = array(
 		),
 	),
 	'shipped_status'                                       => array(
-		'title'       => __( 'Shipped Order Status&hellip;', 'woocommerce-shipstation-integration' ),
+		'title'       => __( 'Shipped Order Status', 'woocommerce-shipstation-integration' ),
 		'type'        => 'select',
 		'options'     => $statuses,
 		'description' => __( 'Define the order status you wish to update to once an order has been shipping via ShipStation. By default this is "Completed".', 'woocommerce-shipstation-integration' ),
@@ -130,8 +115,9 @@ $fields = array(
 		'title'       => __( 'Gift', 'woocommerce-shipstation-integration' ),
 		'label'       => __( 'Enable Gift options at checkout page', 'woocommerce-shipstation-integration' ),
 		'type'        => 'checkbox',
+		// No desc_tip: the tooltip text only restated the label, and checkbox
+		// help belongs below the field (WC 10.8 misaligns checkbox tooltips).
 		'description' => __( 'Allow customer to mark their order as a gift and include a personalized message.', 'woocommerce-shipstation-integration' ),
-		'desc_tip'    => __( 'Enable gift fields on the checkout page.', 'woocommerce-shipstation-integration' ),
 		'default'     => 'no',
 	),
 	'logging_enabled'                                      => array(
@@ -139,7 +125,6 @@ $fields = array(
 		'label'       => __( 'Enable Logging', 'woocommerce-shipstation-integration' ),
 		'type'        => 'checkbox',
 		'description' => __( 'Note: this may log personal information. We recommend using this for debugging purposes only and deleting the logs when finished.', 'woocommerce-shipstation-integration' ),
-		'desc_tip'    => __( 'Log all API interactions.', 'woocommerce-shipstation-integration' ),
 		'default'     => 'yes',
 	),
 );
@@ -152,95 +137,65 @@ if ( Checkout_Rates_Options::should_render_settings_section() ) {
 	);
 }
 
-// Always-visible opt-in checkbox (SHIPSTN-133). Ticking it enables the
-// WordPress.com transport — the same gate the WC_SHIPSTATION_WPCOM_TRANSPORT
-// constant and the wc_shipstation_wpcom_transport_enabled filter still drive.
-// Off by default: no behavior change for existing merchants until they opt in.
-$wpcom_transport_description = __( 'Routes ShipStation traffic to your store through WordPress.com, providing a more stable connection that bypasses firewall and security-plugin blocks that can intercept direct requests.', 'woocommerce-shipstation-integration' );
-
+// Save-bearing WordPress.com transport opt-in (SHIPSTN-133). Ticking it enables
+// the WordPress.com transport — the same gate the WC_SHIPSTATION_WPCOM_TRANSPORT
+// constant and the wc_shipstation_wpcom_transport_enabled filter still drive. Off
+// by default: no behavior change for existing merchants until they opt in.
+//
+// As of SHIPSTN-142 reqs 6 & 7 this field stays REGISTERED purely so its checkbox
+// POSTs under woocommerce_shipstation_wpcom_transport_enabled and
+// validate_wpcom_transport_field() runs — its custom renderer
+// generate_wpcom_transport_html() now returns '' (no standalone row). The checkbox
+// is hand-rendered inside the unified "ShipStation Connection" section's
+// always-visible transport strip (build_wpcom_transport_strip_html()), which also
+// owns the help text and the forced-override (disabled + checked + note) handling.
 $fields['wpcom_transport_enabled'] = array(
 	'title'    => __( 'WordPress.com Connection', 'woocommerce-shipstation-integration' ),
 	'label'    => __( 'Enable WordPress.com Transport', 'woocommerce-shipstation-integration' ),
-	'type'     => 'checkbox',
-	// Render the description below the checkbox (no tooltip). desc_tip => true
-	// would fold it into a "?" tooltip that WC 10.8 misaligns on checkbox rows;
-	// WC's own checkbox settings put the help text below the field.
+	// Custom type → generate_wpcom_transport_html() (returns '' so WC renders no
+	// second row); the checkbox lives in the unified section. Saving behaves
+	// exactly like a checkbox (validate_wpcom_transport_field → validate_checkbox_field).
+	'type'     => 'wpcom_transport',
 	'desc_tip' => false,
 	'default'  => 'no',
 );
 
-// When the constant or filter forces the transport on, the checkbox can't turn
-// it off (the override wins — see Features::is_wpcom_transport_enabled()). Show
-// it checked + disabled and name which override is in control, rather than
-// letting it render unchecked/editable and misrepresent the live state.
-if ( Features::is_wpcom_transport_forced_by_override() ) {
-	$override_source = ( defined( 'WC_SHIPSTATION_WPCOM_TRANSPORT' ) && WC_SHIPSTATION_WPCOM_TRANSPORT )
-		? '<code>WC_SHIPSTATION_WPCOM_TRANSPORT</code>'
-		: '<code>wc_shipstation_wpcom_transport_enabled</code>';
+// Unified "ShipStation Connection" section (SHIPSTN-142, reqs 6 & 7). A single
+// settings row, rendered by generate_shipstation_credentials_html(): an
+// always-visible status pill + conditional verdict banner + the WordPress.com
+// transport strip (the relocated transport checkbox + connect/disconnect
+// controls), then three collapsible <details> subsections — Credentials (the
+// values ShipStation needs, with inline Generate, in place of the former "View …"
+// pop-up modals), Connections (where ShipStation has authenticated from), and API
+// Keys (the plugin-generated REST key pairs, with per-row delete — key generation
+// never deletes old pairs, so this list is the merchant's only cleanup path).
+// Registered unconditionally so it shows in direct mode too (the Store URL is then
+// the site URL).
+//
+// Rows for the Connections and API Keys lists are fetched at render time — which
+// only happens on this settings tab — so registering this field unconditionally
+// adds no query to the init_form_fields() call that runs on every request.
+$fields['shipstation_credentials'] = array(
+	'title' => __( 'ShipStation Connection', 'woocommerce-shipstation-integration' ),
+	'type'  => 'shipstation_credentials',
+);
 
-	$fields['wpcom_transport_enabled']['disabled']          = true;
-	$fields['wpcom_transport_enabled']['custom_attributes'] = array( 'checked' => 'checked' );
-
-	$wpcom_transport_description .= '<br>' . sprintf(
-		/* translators: %s: the constant or filter name (wrapped in a <code> tag) that is forcing the setting on. */
-		esc_html__( 'This option is locked on by %s in your site configuration and cannot be changed here. Remove it to control this setting from this checkbox.', 'woocommerce-shipstation-integration' ),
-		$override_source
-	);
-}
-
-$fields['wpcom_transport_enabled']['description'] = $wpcom_transport_description;
-
-// Pre-GA safety (SHIPSTN-142): keep the WordPress.com transport dev-gated until
-// the full experience (auto-generated credential banner, REST API key list, and
-// final copy) ships. Without a developer override (the
-// WC_SHIPSTATION_WPCOM_TRANSPORT constant or the
-// wc_shipstation_wpcom_transport_enabled filter) the merchant checkbox is not
-// registered, so the feature stays off for merchants and the connection block
-// below — gated by the same predicate — does not render either. UNDO this when
-// the feature goes GA (the undo ships with the banner work).
-if ( ! Features::is_wpcom_transport_forced_by_override() ) {
-	unset( $fields['wpcom_transport_enabled'] );
-}
-
-// Connection management lives below the checkbox and only renders once the
-// transport is enabled (checkbox, constant, or filter). When connected it also
-// surfaces a CTA to the existing "View Authentication Data" modal so the
-// merchant can copy the four values ShipStation's connection form needs.
-if ( Features::is_wpcom_transport_enabled() ) {
-	$connection = Main::instance()->get_wpcom_connection();
-
-	if ( null === $connection ) {
-		$button_html = '<p>' . esc_html__( 'The WordPress.com connection package is unavailable. Reinstall plugin dependencies to enable this feature.', 'woocommerce-shipstation-integration' ) . '</p>';
-	} elseif ( $connection->is_connected() ) {
-		$wpcom_blog_id = $connection->get_blog_id();
-		$action_url    = wp_nonce_url(
-			admin_url( 'admin-post.php?action=shipstation_wpcom_disconnect' ),
-			'shipstation_wpcom_disconnect'
-		);
-		$button_html   = sprintf(
-			'<p><strong>%s</strong> %s</p><p><button type="button" class="button button-primary shipstation-view-auth">%s</button> <a href="%s" class="button">%s</a></p>',
-			esc_html__( 'Connected to WordPress.com.', 'woocommerce-shipstation-integration' ),
-			$wpcom_blog_id ? esc_html( sprintf( /* translators: %d: WordPress.com blog id */ __( 'Blog ID: %d', 'woocommerce-shipstation-integration' ), $wpcom_blog_id ) ) : '',
-			esc_html__( 'View ShipStation connection details', 'woocommerce-shipstation-integration' ),
-			esc_url( $action_url ),
-			esc_html__( 'Disconnect from WordPress.com', 'woocommerce-shipstation-integration' )
-		);
-	} else {
-		$action_url  = wp_nonce_url(
-			admin_url( 'admin-post.php?action=shipstation_wpcom_connect' ),
-			'shipstation_wpcom_connect'
-		);
-		$button_html = sprintf(
-			'<p><a href="%s" class="button button-primary">%s</a></p>',
-			esc_url( $action_url ),
-			esc_html__( 'Connect to WordPress.com', 'woocommerce-shipstation-integration' )
-		);
+// Surface the WordPress.com connection + ShipStation REST credentials group at
+// the top of the tab (SHIPSTN-142): the transport opt-in, the connection
+// status/actions, and the inline ShipStation Connection section (credentials,
+// connection list, and key list, rendered by
+// generate_shipstation_credentials_html()) — the merchant's first task is wiring
+// ShipStation up, so it leads. The order-mapping and other settings keep their
+// relative order below. Keys absent in the current mode (e.g. wpcom_connection
+// when the transport is off) are simply skipped.
+$top_keys = array( 'wpcom_transport_enabled', 'shipstation_credentials' );
+$ordered  = array();
+foreach ( $top_keys as $top_key ) {
+	if ( isset( $fields[ $top_key ] ) ) {
+		$ordered[ $top_key ] = $fields[ $top_key ];
+		unset( $fields[ $top_key ] );
 	}
-
-	$fields['wpcom_connection'] = array(
-		'type'        => 'title',
-		'description' => $button_html,
-	);
 }
+$fields = $ordered + $fields;
 
 return $fields;

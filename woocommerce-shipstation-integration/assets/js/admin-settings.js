@@ -179,9 +179,71 @@
 		} );
 	}
 
+	function deleteApiKey( buttonEl ) {
+		var keyId = buttonEl.getAttribute( 'data-key-id' );
+		if ( ! keyId || ! settings.ajaxUrl || ! settings.deleteKeyNonce ) {
+			return;
+		}
+
+		// Native confirm() on purpose: WC core uses the same pattern for
+		// destructive admin actions, and the browser dialog cannot be spoofed.
+		if ( ! window.confirm( settings.deleteKeyConfirm || '' ) ) {
+			return;
+		}
+
+		buttonEl.disabled = true;
+
+		var body = new FormData();
+		body.append( 'action', 'shipstation_delete_api_key' );
+		body.append( 'nonce', settings.deleteKeyNonce );
+		body.append( 'key_id', keyId );
+
+		fetch( settings.ajaxUrl, {
+			method: 'POST',
+			credentials: 'same-origin',
+			body: body,
+		} )
+			.then( function ( res ) {
+				if ( ! res.ok ) {
+					throw new Error( 'HTTP ' + res.status );
+				}
+				return res.json();
+			} )
+			.then( function ( response ) {
+				if ( ! response || ! response.success ) {
+					buttonEl.disabled = false;
+					window.alert( ( response && response.data && response.data.message ) || settings.deleteKeyError || '' );
+					return;
+				}
+
+				var row   = buttonEl.closest( 'tr' );
+				var table = buttonEl.closest( 'table' );
+				if ( row && row.parentNode ) {
+					row.parentNode.removeChild( row );
+				}
+				// Hide an emptied table outright rather than leaving headers
+				// over zero rows; the field disappears on the next page load.
+				if ( table && ! table.querySelector( 'tbody tr' ) ) {
+					table.style.display = 'none';
+				}
+			} )
+			.catch( function () {
+				buttonEl.disabled = false;
+				window.alert( settings.deleteKeyError || '' );
+			} );
+	}
+
 	$( function () {
 		$( '#' + settings.exportStatusesFieldId ).on( 'change', updateExcludedStatuses );
 		bindUnmappedListeners();
 		refreshUnmappedWarning();
+
+		document.addEventListener( 'click', function ( event ) {
+			var deleteBtn = event.target.closest( '.shipstation-delete-api-key' );
+			if ( deleteBtn ) {
+				event.preventDefault();
+				deleteApiKey( deleteBtn );
+			}
+		} );
 	} );
 } )( jQuery );

@@ -50,9 +50,10 @@ class Auth_Controller {
 	 * Plaintext prefix prepended to every plugin-generated consumer_secret.
 	 *
 	 * Stored verbatim in `consumer_secret char(43)`, so this prefix is the
-	 * single source of truth for "did this plugin create this row?" — used by
-	 * both the modal-side resolver and the rotation sweep to identify our
-	 * rows without false-positive risk against merchant-created keys.
+	 * single source of truth for "did this plugin create this row?", used by
+	 * the inline credentials section, the settings-tab key list, and the per-row
+	 * delete ({@see delete_plugin_key_row()}) to identify our rows without
+	 * false-positive risk against merchant-created keys.
 	 *
 	 * Length budget: prefix (8) + `wc_rand_hash()` tail (35) = 43, exactly
 	 * filling `char(43)`. A longer total would silently truncate on insert
@@ -63,6 +64,73 @@ class Auth_Controller {
 	 * @var string
 	 */
 	const API_SECRET_PREFIX = 'cs_wcss_';
+
+	/**
+	 * Legacy plaintext prefix on consumer_key rows minted by the short-lived
+	 * two-key-set design (SHIPSTN-142).
+	 *
+	 * No longer minted: a WC REST API key is transport-agnostic — the same key
+	 * authenticates a direct request and a WordPress.com-proxied one, so the
+	 * separate "WPCOM" key set was a distinction without an external difference
+	 * (decided 2026-06-15). The single go-forward prefix is {@see API_KEY_PREFIX}.
+	 * This prefix is still RECOGNIZED everywhere (plugin-row lookups, the
+	 * prefix-guarded delete, the orphan prune) so rows minted on the interim
+	 * design stay manageable.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @var string
+	 */
+	const WPCOM_API_KEY_PREFIX = 'ck_wcsw_';
+
+	/**
+	 * Legacy plaintext prefix on consumer_secret rows from the two-key-set design.
+	 *
+	 * Retained as a recognized "plugin-minted" marker alongside
+	 * {@see API_SECRET_PREFIX}; nothing mints it anymore (see
+	 * {@see WPCOM_API_KEY_PREFIX}). The plugin-row lookups, per-row delete, and
+	 * orphan prune all treat both prefixes as the one plugin key set.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @var string
+	 */
+	const WPCOM_API_SECRET_PREFIX = 'cs_wcsw_';
+
+	/**
+	 * Option storing per-key mint metadata, keyed by `key_id`.
+	 *
+	 * `woocommerce_api_keys` has no created/minted timestamp column (`key_id`
+	 * gives creation order, not time), so the plugin records mint time itself:
+	 * `{ <key_id>: { minted_at: <epoch> } }`. Written at mint in
+	 * {@see insert_api_key_row()} and cleaned on delete in
+	 * {@see delete_plugin_key_row()}. Drives the "Minted" column (later slice)
+	 * and the age check in the orphan prune. Presence of an entry also marks a
+	 * row as "plugin-minted with intent".
+	 *
+	 * @since 5.2.0
+	 *
+	 * @var string
+	 */
+	const KEY_META_OPTION = 'woocommerce_shipstation_key_meta';
+
+	/**
+	 * Action Scheduler hook for the daily orphan-key prune.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @var string
+	 */
+	const PRUNE_HOOK = 'woocommerce_shipstation_prune_orphan_keys';
+
+	/**
+	 * Action Scheduler group for the orphan-key prune action.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @var string
+	 */
+	const PRUNE_GROUP = 'woocommerce-shipstation';
 
 	/**
 	 * Option name for the atomic single-flight lock guarding key generation.
@@ -86,11 +154,37 @@ class Auth_Controller {
 	const GEN_LOCK_TTL_SECONDS = 30;
 
 	/**
-	 * Constructor
+	 * Default "active" recency window in seconds: the single source of truth for
+	 * how recently ShipStation must have pinged for a key/route to count as
+	 * connected (24h). Exposed as a constant so the connection UI can derive its
+	 * tiers from it (e.g. the "Last sync" freshness colours: green under half this,
+	 * red past all of it). {@see active_window_seconds()} applies the filter on top.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @var int
 	 */
-	public function __construct() {
-		add_action( 'wp_ajax_shipstation_get_auth_data', array( $this, 'ajax_get_auth_data' ) );
+	const ACTIVE_WINDOW_SECONDS = DAY_IN_SECONDS;
+
+	/**
+	 * Optional injected WPCOM connection facade. Null resolves through Main at
+	 * call time. Injected in tests so WPCOM mode is exercisable without the
+	 * Main singleton.
+	 *
+	 * @var WPCOM_Connection|null
+	 */
+	private ?WPCOM_Connection $connection_override;
+
+	/**
+	 * Constructor
+	 *
+	 * @param WPCOM_Connection|null $connection Optional injected WPCOM connection facade.
+	 */
+	public function __construct( ?WPCOM_Connection $connection = null ) {
+		$this->connection_override = $connection;
+
 		add_action( 'wp_ajax_shipstation_generate_new_keys', array( $this, 'ajax_generate_new_keys' ) );
+		add_action( 'wp_ajax_shipstation_delete_api_key', array( $this, 'ajax_delete_api_key' ) );
 
 		if ( ! is_admin() ) {
 			return;
@@ -111,93 +205,84 @@ class Auth_Controller {
 		}
 
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
-		add_action( 'admin_footer', array( $this, 'render_auth_modal' ) );
 	}
 
 	/**
 	 * Enqueue scripts and styles for auth display.
 	 */
 	public function enqueue_scripts() {
+		$suffix = defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ? '' : '.min';
+
 		wp_enqueue_style( 'shipstation-auth-display', plugins_url( 'assets/css/auth-display.css', WC_SHIPSTATION_FILE ), array(), WC_SHIPSTATION_VERSION );
+
+		// Settings-tab table styling for the REST API key list, the ShipStation
+		// connection list, and the status pills. Previously enqueued by the
+		// now-removed credentials banner; the auth controller is the surviving
+		// owner of the settings-tab credential UI (SHIPSTN-142).
+		wp_enqueue_style(
+			'shipstation-wpcom-credentials',
+			WC_SHIPSTATION_PLUGIN_URL . 'assets/css/wpcom-credentials.css',
+			array( 'shipstation-auth-display' ),
+			WC_SHIPSTATION_VERSION
+		);
 
 		wp_enqueue_script(
 			'shipstation-auth-display',
-			WC_SHIPSTATION_PLUGIN_URL . 'assets/js/auth-display.js',
+			WC_SHIPSTATION_PLUGIN_URL . 'assets/js/auth-display' . $suffix . '.js',
 			array(),
 			WC_SHIPSTATION_VERSION,
 			true
 		);
 
+		// Formats the key/connection list timestamps in the viewer's locale and
+		// timezone from the ISO instants the server surfaces (see relative-time.js).
+		wp_enqueue_script(
+			'shipstation-relative-time',
+			WC_SHIPSTATION_PLUGIN_URL . 'assets/js/relative-time' . $suffix . '.js',
+			array(),
+			WC_SHIPSTATION_VERSION,
+			true
+		);
+
+		// Both Store URL variants, so the JS can swap the credentials section's
+		// Store URL field between the WordPress.com proxy and the direct site URL
+		// as the transport checkbox is toggled — without a save round-trip. The
+		// proxy variant is only known while the transport is on and connected (the
+		// connection facade is gated by the toggle); '' otherwise.
+		$conn_url_direct = home_url();
+		$conn_url_proxy  = '';
+		$connection      = $this->get_connection();
+		if ( null !== $connection && $connection->is_connected() ) {
+			$proxy_url = $connection->get_proxy_url();
+			if ( null !== $proxy_url ) {
+				$conn_url_proxy = (string) $proxy_url;
+			}
+		}
+
 		wp_localize_script(
 			'shipstation-auth-display',
 			'wc_shipstation_auth_params',
 			array(
-				'ajax_url'           => admin_url( 'admin-ajax.php' ),
-				'nonce'              => wp_create_nonce( 'shipstation_auth_nonce' ),
-				'copy_text'          => esc_html__( 'Copied!', 'woocommerce-shipstation-integration' ),
-				'show_text'          => esc_html__( 'Show', 'woocommerce-shipstation-integration' ),
-				'hide_text'          => esc_html__( 'Hide', 'woocommerce-shipstation-integration' ),
-				'error_text'         => esc_html__( 'Error loading authentication data', 'woocommerce-shipstation-integration' ),
-				'confirm_text'       => esc_html__( 'Generating new REST API keys will disable your old keys. Connections using them will stop working until you update ShipStation. Continue?', 'woocommerce-shipstation-integration' ),
-				'missing_keys_title' => esc_html__( 'REST API keys missing', 'woocommerce-shipstation-integration' ),
-				'missing_keys_text'  => esc_html__( 'The REST API keys previously generated for ShipStation are no longer present in WooCommerce. They may have been deleted from WooCommerce → Settings → Advanced → REST API, removed by a security plugin, or lost in a backup restore. ShipStation cannot connect until you generate new keys and update them in ShipStation.', 'woocommerce-shipstation-integration' ),
+				'ajax_url'                 => admin_url( 'admin-ajax.php' ),
+				'nonce'                    => wp_create_nonce( 'shipstation_auth_nonce' ),
+				'conn_url_direct'          => esc_url_raw( $conn_url_direct ),
+				'conn_url_proxy'           => '' !== $conn_url_proxy ? esc_url_raw( $conn_url_proxy ) : '',
+				'copy_text'                => esc_html__( 'Copied!', 'woocommerce-shipstation-integration' ),
+				'show_text'                => esc_html__( 'Show', 'woocommerce-shipstation-integration' ),
+				'hide_text'                => esc_html__( 'Hide', 'woocommerce-shipstation-integration' ),
+				'error_text'               => esc_html__( 'Could not generate new keys. Please try again.', 'woocommerce-shipstation-integration' ),
+				'confirm_text'             => esc_html__( 'Generate a new set of REST API keys? Existing keys stay valid until you delete them from the API key list, so your current ShipStation connection keeps working.', 'woocommerce-shipstation-integration' ),
+				/* Strong confirm for the "Dangerously disconnect" override, which bypasses the wait-for-direct-connection guard. */
+				'disconnect_force_confirm' => esc_html__( 'Dangerously disconnect from WordPress.com? No direct ShipStation connection has been detected, so ShipStation may lose access to your store until you set its Store URL to your site address. Disconnect anyway?', 'woocommerce-shipstation-integration' ),
 			)
 		);
 	}
 
 	/**
-	 * Resolve the existing ShipStation API key row for this site without inserting.
-	 *
-	 * Read-only by contract (SHIPSTN-120): generation happens only through the
-	 * explicit user-clicked {@see Auth_Controller::ajax_generate_new_keys()}.
-	 *
-	 * Returns the row data (key_id + truncated_key) in a single DB query per
-	 * path, so the modal can render the truncated_key without a follow-up
-	 * lookup. `truncated_key` is the same suffix WC shows in its admin REST API
-	 * listing, so it cross-references cleanly for a merchant verifying which
-	 * row ShipStation is authenticating against.
-	 *
-	 * Decision order:
-	 *  1. Option set and that row exists → use it (the steady-state path).
-	 *  2. Option stale or absent, but a plugin-prefixed row exists → adopt it
-	 *     and silently re-point the option. The {@see API_SECRET_PREFIX}
-	 *     prefix is a stronger ownership signal than a description match
-	 *     ever was: only this plugin inserts rows whose `consumer_secret`
-	 *     starts with `cs_wcss_`, so adoption cannot misidentify a
-	 *     merchant-created key.
-	 *  3. Otherwise → null (caller decides between "show notice" and "first
-	 *     time, generate" based on whether the option was previously set).
-	 *
-	 * This heal lives ONLY on the admin-AJAX path (capability-gated to
-	 * `manage_woocommerce`). The REST authentication path deliberately does
-	 * not mutate this option so external callers — including Postman tests
-	 * against the merchant's endpoints — cannot drift it.
-	 *
-	 * @return array|null Row data as ['key_id' => int, 'truncated_key' => string], or null if no ShipStation key exists for this site.
-	 */
-	private function resolve_existing_api_key_row(): ?array {
-		$api_key_id = (int) get_option( self::API_KEY_ID_OPTION, 0 );
-
-		if ( $api_key_id > 0 ) {
-			$row = $this->get_api_key_row( $api_key_id );
-			if ( null !== $row ) {
-				return $row;
-			}
-		}
-
-		$prefixed_row = $this->find_plugin_prefixed_api_key_row();
-		if ( null !== $prefixed_row ) {
-			update_option( self::API_KEY_ID_OPTION, $prefixed_row['key_id'] );
-			return $prefixed_row;
-		}
-
-		return null;
-	}
-
-	/**
 	 * Look up the most recent woocommerce_api_keys row that this plugin
-	 * generated, identified by the {@see API_SECRET_PREFIX} on its
-	 * `consumer_secret` column.
+	 * generated, identified by either recognized plugin prefix on its
+	 * `consumer_secret` column ({@see API_SECRET_PREFIX} or the legacy
+	 * {@see WPCOM_API_SECRET_PREFIX} — both are the one plugin key set now).
 	 *
 	 * `consumer_secret` is stored as plaintext in `char(43)`, so a LIKE
 	 * match against the prefix is reliable and locale-independent.
@@ -213,44 +298,11 @@ class Auth_Controller {
 	private function find_plugin_prefixed_api_key_row(): ?array {
 		global $wpdb;
 
-		$like = $wpdb->esc_like( self::API_SECRET_PREFIX ) . '%';
-
 		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			$wpdb->prepare(
-				"SELECT key_id, truncated_key FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_secret LIKE %s ORDER BY key_id DESC LIMIT 1",
-				$like
-			),
-			ARRAY_A
-		);
-
-		if ( ! is_array( $row ) || empty( $row['key_id'] ) ) {
-			return null;
-		}
-
-		return array(
-			'key_id'        => (int) $row['key_id'],
-			'truncated_key' => is_string( $row['truncated_key'] ) ? $row['truncated_key'] : '',
-		);
-	}
-
-	/**
-	 * Fetch the woocommerce_api_keys row data needed by the modal for a known
-	 * key_id, or null when the row no longer exists (deleted externally).
-	 *
-	 * Returning the row in a single query removes the previous two-query
-	 * pattern (existence check + separate truncated_key lookup).
-	 *
-	 * @param int $api_key_id The API key ID.
-	 *
-	 * @return array|null ['key_id' => int, 'truncated_key' => string], or null if the row is missing.
-	 */
-	private function get_api_key_row( int $api_key_id ): ?array {
-		global $wpdb;
-
-		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			$wpdb->prepare(
-				"SELECT key_id, truncated_key FROM {$wpdb->prefix}woocommerce_api_keys WHERE key_id = %d",
-				$api_key_id
+				"SELECT key_id, truncated_key FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_secret LIKE %s OR consumer_secret LIKE %s ORDER BY key_id DESC LIMIT 1",
+				$wpdb->esc_like( self::API_SECRET_PREFIX ) . '%',
+				$wpdb->esc_like( self::WPCOM_API_SECRET_PREFIX ) . '%'
 			),
 			ARRAY_A
 		);
@@ -308,22 +360,50 @@ class Auth_Controller {
 	}
 
 	/**
-	 * Generate new WooCommerce REST API credentials.
+	 * Generate new WooCommerce REST API credentials for the direct key set.
 	 *
 	 * @return array API credentials.
 	 */
 	private function generate_api_credentials(): array {
+		$credentials = $this->insert_api_key_row(
+			self::API_KEY_PREFIX,
+			self::API_SECRET_PREFIX,
+			__( 'ShipStation Integration', 'woocommerce-shipstation-integration' )
+		);
+
+		if ( ! empty( $credentials['api_key_id'] ) ) {
+			update_option( self::API_KEY_ID_OPTION, $credentials['api_key_id'] );
+		}
+
+		return $credentials;
+	}
+
+	/**
+	 * Insert a woocommerce_api_keys row for one key set.
+	 *
+	 * Set-agnostic core shared by the direct and WPCOM mint paths; callers own
+	 * any option bookkeeping (e.g. {@see API_KEY_ID_OPTION}) and sweeping.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @param string $key_prefix    Plaintext consumer_key prefix (8 chars).
+	 * @param string $secret_prefix Plaintext consumer_secret prefix (8 chars).
+	 * @param string $description   Row description shown in WC's REST API key list.
+	 *
+	 * @return array ['consumer_key', 'consumer_secret', 'api_key_id'], or empty array on DB failure.
+	 */
+	private function insert_api_key_row( string $key_prefix, string $secret_prefix, string $description ): array {
 		global $wpdb;
 
 		// 8-char prefix + 35-char random tail = 43 chars total, exactly
 		// matching WC's default key shape and fitting `consumer_secret char(43)`.
-		$consumer_key    = wc_rand_hash( self::API_KEY_PREFIX, 35 );
-		$consumer_secret = wc_rand_hash( self::API_SECRET_PREFIX, 35 );
+		$consumer_key    = wc_rand_hash( $key_prefix, 35 );
+		$consumer_secret = wc_rand_hash( $secret_prefix, 35 );
 		$table_name      = $wpdb->prefix . 'woocommerce_api_keys';
 
 		$data = array(
 			'user_id'         => $this->get_admin_user_id(),
-			'description'     => __( 'ShipStation Integration', 'woocommerce-shipstation-integration' ),
+			'description'     => $description,
 			'permissions'     => 'read_write',
 			'consumer_key'    => wc_api_hash( $consumer_key ),
 			'consumer_secret' => $consumer_secret,
@@ -347,13 +427,16 @@ class Auth_Controller {
 			// Redact any plaintext plugin-generated secret echoed back in the
 			// MySQL error (e.g. "Duplicate entry 'cs_wcss_…' for key …") before
 			// it lands in debug.log.
-			$safe_db_error = (string) preg_replace( '/(c[ks]_wcss_)\S+/', '$1[redacted]', (string) $wpdb->last_error );
+			$safe_db_error = (string) preg_replace( '/(c[ks]_wcs[sw]_)\S+/', '$1[redacted]', (string) $wpdb->last_error );
 			Logger::error( 'Failed to insert API key into database. DB error: ' . $safe_db_error );
 			return array();
 		}
 
-		$api_key_id = $wpdb->insert_id;
-		update_option( self::API_KEY_ID_OPTION, $api_key_id );
+		// Capture insert_id BEFORE recording the mint metadata: that write runs
+		// its own queries and would clobber $wpdb->insert_id.
+		$api_key_id = (int) $wpdb->insert_id;
+
+		self::record_key_minted_at( $api_key_id );
 
 		return array(
 			'consumer_key'    => $consumer_key,
@@ -363,71 +446,232 @@ class Auth_Controller {
 	}
 
 	/**
-	 * Get the auth metadata visible on every dialog open — site URL and the
-	 * legacy XML auth key.
+	 * Read the per-key mint metadata map ({@see KEY_META_OPTION}).
 	 *
-	 * REST API credentials are intentionally not included: their plaintext is
-	 * unrecoverable once stored (consumer_key is hashed in the keys table) and
-	 * surfacing them on read would require regenerating, which is the bug
-	 * fixed in SHIPSTN-120. Plaintext is only returned by the explicit
-	 * generate-new-keys flow.
+	 * @since 5.2.0
 	 *
-	 * @return array Authentication metadata.
+	 * @return array<int, array> Map of key_id => metadata (e.g. ['minted_at' => int]).
 	 */
-	private function get_auth_data(): array {
-		// Read the option BEFORE the resolver, since the drift-heal may
-		// overwrite it and mask the first-time case below.
-		$had_key_option = (bool) get_option( self::API_KEY_ID_OPTION, false );
+	public static function get_key_meta(): array {
+		$meta = get_option( self::KEY_META_OPTION, array() );
 
-		$resolved_row = $this->resolve_existing_api_key_row();
-		$keys_exist   = null !== $resolved_row;
+		return is_array( $meta ) ? $meta : array();
+	}
 
-		/*
-		 * JS distinguishes three states:
-		 * - keys_exist: row in DB, plaintext already seen (after-view).
-		 * - keys_existed_but_missing: option set but row gone (deleted externally) → warn merchant.
-		 * - first_time: never generated → JS auto-triggers generate-new-keys.
-		 */
-		$keys_existed_but_missing = ! $keys_exist && $had_key_option;
-		$first_time               = ! $keys_exist && ! $had_key_option;
+	/**
+	 * Record the mint timestamp for a freshly inserted key row.
+	 *
+	 * `woocommerce_api_keys` has no created column, so the plugin keeps its own
+	 * timestamp keyed by `key_id`. Stored non-autoloaded — it's read only on the
+	 * settings tab and by the prune.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @param int $key_id Inserted row id.
+	 *
+	 * @return void
+	 */
+	private static function record_key_minted_at( int $key_id ): void {
+		if ( $key_id <= 0 ) {
+			return;
+		}
+
+		$meta            = self::get_key_meta();
+		$meta[ $key_id ] = array( 'minted_at' => time() );
+
+		update_option( self::KEY_META_OPTION, $meta, false );
+	}
+
+	/**
+	 * Return the recorded mint time for a key row, or null when unknown.
+	 *
+	 * Null means the row predates mint-time tracking (or its meta was cleaned):
+	 * its age is unknowable, so the prune leaves it alone.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @param int $key_id Row id.
+	 *
+	 * @return int|null Epoch seconds, or null when no mint time is recorded.
+	 */
+	public static function get_key_minted_at( int $key_id ): ?int {
+		$meta = self::get_key_meta();
+
+		if ( isset( $meta[ $key_id ]['minted_at'] ) ) {
+			return (int) $meta[ $key_id ]['minted_at'];
+		}
+
+		return null;
+	}
+
+	/**
+	 * Stamp a mint time on any plugin key row that lacks one (keys minted before
+	 * mint-time tracking existed). Uses "now" as the baseline, so a never-used
+	 * legacy key — already an orphan, since it never authenticated — joins the
+	 * normal lifecycle: it shows the auto-remove countdown and is pruned after the
+	 * TTL. Idempotent and cheap; only writes when something is missing.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return void
+	 */
+	public static function backfill_missing_minted_at(): void {
+		global $wpdb;
+
+		$key_ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				"SELECT key_id FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_secret LIKE %s OR consumer_secret LIKE %s",
+				$wpdb->esc_like( self::API_SECRET_PREFIX ) . '%',
+				$wpdb->esc_like( self::WPCOM_API_SECRET_PREFIX ) . '%'
+			)
+		);
+
+		if ( empty( $key_ids ) ) {
+			return;
+		}
+
+		$meta    = self::get_key_meta();
+		$now     = time();
+		$changed = false;
+
+		foreach ( $key_ids as $key_id ) {
+			$key_id = (int) $key_id;
+			if ( isset( $meta[ $key_id ]['minted_at'] ) ) {
+				continue;
+			}
+			if ( ! isset( $meta[ $key_id ] ) || ! is_array( $meta[ $key_id ] ) ) {
+				$meta[ $key_id ] = array();
+			}
+			$meta[ $key_id ]['minted_at'] = $now;
+			$changed                      = true;
+		}
+
+		if ( $changed ) {
+			update_option( self::KEY_META_OPTION, $meta, false );
+		}
+	}
+
+	/**
+	 * Distinct transports a plugin key has authenticated over, for the key
+	 * list's "Type" column. Delegates to the connection log (custom table).
+	 *
+	 * @since 5.2.0
+	 *
+	 * @param int $key_id Row id.
+	 *
+	 * @return string[] Subset of ['wpcom', 'direct']; empty when never observed.
+	 */
+	public static function get_key_transports( int $key_id ): array {
+		return Connection_Log::transports_for_key( $key_id );
+	}
+
+	/**
+	 * Whether a plaintext consumer_secret carries one of the recognized plugin
+	 * prefixes — i.e. this plugin minted the row (current or legacy interim
+	 * set). The REST gate uses it to scope transport recording to our own keys.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @param string $consumer_secret Plaintext secret from the keys table.
+	 *
+	 * @return bool
+	 */
+	public static function is_plugin_secret( string $consumer_secret ): bool {
+		return 0 === strpos( $consumer_secret, self::API_SECRET_PREFIX )
+			|| 0 === strpos( $consumer_secret, self::WPCOM_API_SECRET_PREFIX );
+	}
+
+	/**
+	 * Drop the mint metadata for a key row that is being deleted.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @param int $key_id Row id.
+	 *
+	 * @return void
+	 */
+	private static function forget_key_meta( int $key_id ): void {
+		$meta = self::get_key_meta();
+
+		if ( ! array_key_exists( $key_id, $meta ) ) {
+			return;
+		}
+
+		unset( $meta[ $key_id ] );
+		update_option( self::KEY_META_OPTION, $meta, false );
+	}
+
+	/**
+	 * State for the inline connection/credentials section on the settings tab
+	 * (SHIPSTN-142). Replaces the auth modal's AJAX-loaded state with a
+	 * server-rendered one.
+	 *
+	 * `cred_state` is one of:
+	 *  - 'reference': a plugin key exists — show the consumer key's last 7 chars,
+	 *    the stored consumer secret, the auth key, and the Store URL.
+	 *  - 'missing': the API_KEY_ID_OPTION pointer is set but no plugin row exists
+	 *    (deleted externally) — show the recovery notice.
+	 *  - 'none': no plugin key has ever been generated — prompt to Generate.
+	 *
+	 * The full consumer key is never returned (it is hashed at rest); only a fresh
+	 * Generate reveals it.
+	 *
+	 * @return array{cred_state:string,conn_url:string,auth_key:string,truncated_key:string,consumer_secret:string}
+	 */
+	public function get_connection_section_data(): array {
+		$latest     = $this->get_latest_wpcom_key();
+		$keys_exist = null !== $latest;
+		$had_option = (bool) get_option( self::API_KEY_ID_OPTION, false );
+
+		if ( $keys_exist ) {
+			$cred_state = 'reference';
+		} elseif ( $had_option ) {
+			$cred_state = 'missing';
+		} else {
+			$cred_state = 'none';
+		}
 
 		return array(
-			'site_url'                 => $this->get_store_url_for_shipstation(),
-			'auth_key'                 => WC_ShipStation_Integration::$auth_key,
-			'keys_exist'               => $keys_exist,
-			'keys_existed_but_missing' => $keys_existed_but_missing,
-			'first_time'               => $first_time,
-			'truncated_key'            => $keys_exist ? $resolved_row['truncated_key'] : '',
+			'cred_state'      => $cred_state,
+			'conn_url'        => $this->get_conn_url_for_shipstation(),
+			'auth_key'        => (string) WC_ShipStation_Integration::$auth_key,
+			'truncated_key'   => $keys_exist ? $latest['truncated_key'] : '',
+			'consumer_secret' => $keys_exist ? $latest['consumer_secret'] : '',
 		);
 	}
 
 	/**
 	 * Resolve the URL the merchant should paste into ShipStation's "Store URL"
 	 * field. With WPCOM transport active and the site Jetpack-connected, that's
-	 * the WPCOM proxy entry point; otherwise it's the merchant's own site URL.
+	 * the WPCOM proxy entry point; otherwise (or while a disconnect is pending,
+	 * when the merchant is being told to set up the direct route) it's the
+	 * merchant's own site URL.
 	 *
 	 * The proxy URL routes ShipStation traffic via WordPress.com (which signs
 	 * each call with the blog token before forwarding to the merchant), so a
 	 * merchant whose site is firewalled / behind a security plugin only needs
 	 * to allowlist `*.wordpress.com` rather than reverse-engineer their host's
 	 * blocking layer. The plugin's REST gate accepts both transports
-	 * identically; the URL surfaced in the modal decides which one ShipStation
-	 * actually uses.
+	 * identically; the URL surfaced in the credentials section decides which one
+	 * ShipStation actually uses.
 	 *
 	 * @since 5.0.5
 	 *
 	 * @return string Site or proxy URL, without a trailing slash.
 	 */
-	private function get_store_url_for_shipstation(): string {
+	private function get_conn_url_for_shipstation(): string {
 		if ( Features::is_wpcom_transport_enabled() ) {
-			$connection = Main::instance()->get_wpcom_connection();
-			if ( null !== $connection && $connection->is_connected() ) {
-				$blog_id = $connection->get_blog_id();
-				if ( null !== $blog_id ) {
-					return sprintf(
-						'https://public-api.wordpress.com/wpcom/v2/sites/%d/shipstation',
-						$blog_id
-					);
+			$connection = $this->get_connection();
+			// While a WordPress.com disconnect is pending, the merchant is being
+			// asked to establish the DIRECT route before tearing down the proxy, so
+			// surface the direct site URL to copy into ShipStation — not the proxy
+			// URL that is about to go away. Likewise during a URL mismatch,
+			// the proxy points at the old address and is dead until repaired, so the
+			// direct URL is the only working route to copy.
+			if ( null !== $connection && $connection->is_connected() && ! $connection->has_disconnect_intent() && ! $connection->has_url_mismatch() ) {
+				$proxy_url = $connection->get_proxy_url();
+				if ( null !== $proxy_url ) {
+					return $proxy_url;
 				}
 			}
 		}
@@ -436,101 +680,158 @@ class Auth_Controller {
 	}
 
 	/**
-	 * Generate new API keys, sweeping older plugin-generated rows.
+	 * Resolve the WPCOM connection facade (injected in tests, else via Main).
 	 *
-	 * Generation runs first; only after the new INSERT succeeds do we sweep
-	 * the older rows. A failed insert must not leave the merchant with zero
-	 * valid credentials.
-	 *
-	 * The sweep is keyed on the {@see API_SECRET_PREFIX} prefix so it can
-	 * only ever delete rows this plugin created. Two real-world consequences
-	 * of that scoping:
-	 *
-	 *  - A merchant-created key that happens to share our description (e.g.
-	 *    someone manually added a row labelled "ShipStation Integration") is
-	 *    safe — its secret has no `cs_wcss_` prefix.
-	 *  - Pre-5.0.8 plugin-generated rows are also spared, because they pre-date
-	 *    the prefix. That is deliberate: the merchant may still have
-	 *    ShipStation configured against one of those rows, and deleting it
-	 *    would break their live connection. The merchant can revoke them
-	 *    manually from WooCommerce → Settings → Advanced → REST API once
-	 *    they've migrated to the new prefixed credentials.
-	 *
-	 * Concurrency contract: callers MUST hold {@see acquire_generation_lock()}.
-	 * Without the lock, two concurrent invocations can each insert a prefixed
-	 * row and then have their sweeps delete each other's row, leaving the
-	 * merchant with plaintext credentials pointing at a deleted key_id. The
-	 * only production caller, {@see ajax_generate_new_keys()}, acquires the
-	 * lock before invoking this method; any new caller (CLI, REST diagnostic,
-	 * scheduled task) must do the same.
-	 *
-	 * @return array New API credentials.
+	 * @return WPCOM_Connection|null
 	 */
-	private function generate_new_keys(): array {
-		$new_credentials = $this->generate_api_credentials();
-
-		if ( ! empty( $new_credentials['api_key_id'] ) ) {
-			$this->delete_orphan_api_keys( (int) $new_credentials['api_key_id'] );
+	private function get_connection(): ?WPCOM_Connection {
+		if ( null !== $this->connection_override ) {
+			return $this->connection_override;
 		}
 
-		return $new_credentials;
+		return Main::instance()->get_wpcom_connection();
 	}
 
 	/**
-	 * Delete every plugin-generated woocommerce_api_keys row except the one to keep.
+	 * List every plugin-generated key row (both sets), newest first.
 	 *
-	 * Identifies plugin-generated rows by the {@see API_SECRET_PREFIX} prefix
-	 * on the plaintext `consumer_secret` column. This is the only column we
-	 * control that's both stored verbatim (unlike `consumer_key`, which is
-	 * hashed) and unambiguous (unlike `description`, which a merchant or a
-	 * past locale could have produced).
+	 * Rows are identified by the set prefixes on the plaintext
+	 * `consumer_secret`; merchant-created keys never appear here. Powers the
+	 * settings-tab key list from which the merchant retires old pairs.
 	 *
-	 * @param int $keep_key_id The key_id to preserve (the freshly inserted row).
+	 * @since 5.2.0
+	 *
+	 * @return array[] Each: ['key_id' => int, 'transports' => string[], 'transport_last_seen' => array<string,string>, 'description' => string, 'truncated_key' => string, 'last_access' => string|null].
 	 */
-	private function delete_orphan_api_keys( int $keep_key_id ): void {
+	public static function get_plugin_key_rows(): array {
 		global $wpdb;
 
-		$like = $wpdb->esc_like( self::API_SECRET_PREFIX ) . '%';
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				"SELECT key_id, description, truncated_key, last_access FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_secret LIKE %s OR consumer_secret LIKE %s ORDER BY key_id DESC",
+				$wpdb->esc_like( self::API_SECRET_PREFIX ) . '%',
+				$wpdb->esc_like( self::WPCOM_API_SECRET_PREFIX ) . '%'
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		$key_ids = array();
+		foreach ( $rows as $row ) {
+			$key_ids[] = (int) $row['key_id'];
+		}
+
+		// One grouped query for every key's observed transports + last-seen,
+		// rather than two queries per row (settings key-list N+1).
+		$summary = Connection_Log::transports_summary_for_keys( $key_ids );
+
+		$result = array();
+		foreach ( $rows as $row ) {
+			$key_id   = (int) $row['key_id'];
+			$result[] = array(
+				'key_id'              => $key_id,
+				// Observed transports the key has actually authenticated over —
+				// the honest basis for the "Type" column ('wpcom'/'direct'/both).
+				'transports'          => isset( $summary[ $key_id ] ) ? $summary[ $key_id ]['transports'] : array(),
+				// Latest ping per transport, so the "Type" column can recency-filter
+				// the observed set and drop a route that has since gone silent.
+				'transport_last_seen' => isset( $summary[ $key_id ] ) ? $summary[ $key_id ]['transport_last_seen'] : array(),
+				'description'         => isset( $row['description'] ) ? (string) $row['description'] : '',
+				'truncated_key'       => isset( $row['truncated_key'] ) ? (string) $row['truncated_key'] : '',
+				'last_access'         => isset( $row['last_access'] ) ? $row['last_access'] : null,
+			);
+		}
+
+		return $result;
+	}
+
+	/**
+	 * Delete one plugin-generated key row by id.
+	 *
+	 * The WHERE clause re-checks the set prefixes, so a merchant-created row
+	 * can never be deleted through this path no matter what id is posted.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @param int $key_id Row to delete.
+	 *
+	 * @return bool True when a plugin-generated row was deleted.
+	 */
+	public static function delete_plugin_key_row( int $key_id ): bool {
+		global $wpdb;
 
 		$result = $wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			$wpdb->prepare(
-				"DELETE FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_secret LIKE %s AND key_id <> %d",
-				$like,
-				$keep_key_id
+				"DELETE FROM {$wpdb->prefix}woocommerce_api_keys WHERE key_id = %d AND ( consumer_secret LIKE %s OR consumer_secret LIKE %s )",
+				$key_id,
+				$wpdb->esc_like( self::API_SECRET_PREFIX ) . '%',
+				$wpdb->esc_like( self::WPCOM_API_SECRET_PREFIX ) . '%'
 			)
 		);
 
 		if ( false === $result ) {
-			Logger::error( 'Failed to sweep stale ShipStation API keys. DB error: ' . $wpdb->last_error );
+			Logger::error( 'Failed to delete ShipStation API key row. DB error: ' . $wpdb->last_error );
+			return false;
 		}
+
+		if ( $result > 0 ) {
+			self::forget_key_meta( $key_id );
+		}
+
+		return $result > 0;
 	}
 
 	/**
-	 * AJAX handler for getting authentication data.
+	 * Fetch the most recent plugin key row of either recognized prefix, or null
+	 * when none exists.
+	 *
+	 * Used to report `keys_exist` and the `truncated_key` for the inline
+	 * credentials section ({@see get_connection_section_data()}). Since the
+	 * two-key-set collapse this resolves the one plugin key set (both legacy
+	 * prefixes). The full consumer key (hashed at rest) is revealed only at
+	 * generation time, never re-rendered from here.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return array|null ['key_id' => int, 'truncated_key' => string, 'consumer_secret' => string], or null.
 	 */
-	public function ajax_get_auth_data() {
-		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'shipstation_auth_nonce' ) ) {
-			wp_die( esc_html__( 'Security check failed', 'woocommerce-shipstation-integration' ) );
+	public function get_latest_wpcom_key(): ?array {
+		global $wpdb;
+
+		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				"SELECT key_id, truncated_key, consumer_secret FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_secret LIKE %s OR consumer_secret LIKE %s ORDER BY key_id DESC LIMIT 1",
+				$wpdb->esc_like( self::API_SECRET_PREFIX ) . '%',
+				$wpdb->esc_like( self::WPCOM_API_SECRET_PREFIX ) . '%'
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $row ) || empty( $row['key_id'] ) ) {
+			return null;
 		}
 
-		// phpcs:ignore WordPress.WP.Capabilities.Unknown --- It's native capability from WooCommerce.
-		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			wp_die( esc_html__( 'You do not have sufficient permissions.', 'woocommerce-shipstation-integration' ) );
-		}
-
-		wp_send_json_success( $this->get_auth_data() );
+		return array(
+			'key_id'          => (int) $row['key_id'],
+			'truncated_key'   => is_string( $row['truncated_key'] ) ? $row['truncated_key'] : '',
+			'consumer_secret' => is_string( $row['consumer_secret'] ) ? $row['consumer_secret'] : '',
+		);
 	}
 
 	/**
 	 * Atomically acquire the generation lock, or return false if another
 	 * request already holds it.
 	 *
-	 * Two near-simultaneous dialog opens (browser preconnect, monitoring tool,
-	 * a second admin tab) can both observe `first_time === true` and both
-	 * POST to ajax_generate_new_keys. Without this lock, both inserts succeed,
-	 * both sweeps then delete the OTHER request's row, and the plaintext
-	 * shown in tab A points at a row tab B already deleted — ShipStation
-	 * silently fails to connect.
+	 * Two near-simultaneous generate requests (a double-clicked Generate button,
+	 * a second admin tab) can both POST to ajax_generate_new_keys. Generation is
+	 * non-destructive, so the hazard is no longer a mutual sweep but a duplicate
+	 * mint: both inserts succeed and race to write {@see API_KEY_ID_OPTION},
+	 * leaving an orphaned extra pair and an option that may track a different row
+	 * than the one whose plaintext a given tab displayed. The lock serialises
+	 * generation so a single click mints a single pair.
 	 *
 	 * Implemented via add_option(), which is atomic at the DB level (UNIQUE
 	 * constraint on option_name) and works without an object cache. The
@@ -600,7 +901,12 @@ class Auth_Controller {
 		}
 
 		try {
-			$new_credentials = $this->generate_new_keys();
+			// One unified plugin key set (2026-06-15 collapse): a WC REST API key
+			// is transport-agnostic, so both transports mint the same pair. The
+			// Store URL — not the key — is what differs by transport. Generation
+			// is non-destructive (SHIPSTN-142): older pairs stay valid. We already
+			// hold the lock here, so we call the unlocked generator directly.
+			$new_credentials = $this->generate_api_credentials();
 		} finally {
 			$this->release_generation_lock();
 		}
@@ -610,37 +916,297 @@ class Auth_Controller {
 			return;
 		}
 
+		// Server-rendered "API Keys" list so the just-minted key appears in the
+		// list immediately, without forcing a reload that would discard the
+		// once-only consumer key the merchant still needs to copy. This is a
+		// progressive enhancement: a render failure must never turn a successful
+		// mint into an error, so fall back to an empty fragment (the merchant then
+		// sees the new key after a reload).
+		$key_list_html = '';
+		try {
+			$key_list_html = WC_ShipStation_Integration::render_api_key_list_html();
+		} catch ( \Throwable $e ) {
+			Logger::error( 'Failed to render the API key list after minting keys: ' . $e->getMessage() );
+		}
+
 		$auth_data = array(
 			'consumer_key'    => $new_credentials['consumer_key'],
 			'consumer_secret' => $new_credentials['consumer_secret'],
 			'auth_key'        => WC_ShipStation_Integration::$auth_key,
-			'site_url'        => $this->get_store_url_for_shipstation(),
+			'site_url'        => $this->get_conn_url_for_shipstation(),
+			'key_list_html'   => $key_list_html,
 		);
 
 		wp_send_json_success( $auth_data );
 	}
 
 	/**
-	 * Render the authentication modal HTML.
+	 * AJAX handler for deleting one plugin-generated API key row from the
+	 * settings-tab key list (SHIPSTN-142).
+	 *
+	 * @since 5.2.0
 	 */
-	public function render_auth_modal() {
-		wc_get_template(
-			'auth-modal.php',
-			array(),
-			'',
-			WC_SHIPSTATION_ABSPATH . 'templates/'
-		);
+	public function ajax_delete_api_key() {
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'shipstation_auth_nonce' ) ) {
+			wp_die( esc_html__( 'Security check failed', 'woocommerce-shipstation-integration' ) );
+		}
+
+		// phpcs:ignore WordPress.WP.Capabilities.Unknown --- It's native capability from WooCommerce.
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'You do not have sufficient permissions.', 'woocommerce-shipstation-integration' ) );
+		}
+
+		$key_id = isset( $_POST['key_id'] ) ? absint( wp_unslash( $_POST['key_id'] ) ) : 0;
+
+		if ( $key_id <= 0 || ! self::delete_plugin_key_row( $key_id ) ) {
+			wp_send_json_error(
+				array( 'message' => __( 'This key could not be deleted. It may have been removed already.', 'woocommerce-shipstation-integration' ) )
+			);
+			return;
+		}
+
+		// If the merchant just deleted the direct row the option pointed at,
+		// re-point it to the newest remaining direct row (or clear it). Without
+		// this the option dangles at a missing id, and the next credentials
+		// section render would mistake a deliberate deletion for keys "removed by
+		// a security plugin / lost in a backup restore" (finding #5).
+		if ( (int) get_option( self::API_KEY_ID_OPTION, 0 ) === $key_id ) {
+			$newest_direct = $this->find_plugin_prefixed_api_key_row();
+			if ( null !== $newest_direct ) {
+				update_option( self::API_KEY_ID_OPTION, $newest_direct['key_id'] );
+			} else {
+				delete_option( self::API_KEY_ID_OPTION );
+			}
+		}
+
+		wp_send_json_success();
 	}
 
 	/**
-	 * Get the "View Authentication Data" button HTML.
+	 * Wire the daily orphan-key prune: register the action handler and ensure
+	 * the recurring Action Scheduler job is scheduled.
 	 *
-	 * @return string Button HTML.
+	 * Called once from {@see Main::init()} (on plugins_loaded). Scheduling is
+	 * deferred to `init` so Action Scheduler is loaded before we query it.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return void
+	 */
+	public static function register_orphan_prune(): void {
+		add_action( self::PRUNE_HOOK, array( __CLASS__, 'prune_orphan_keys' ) );
+		add_action( 'init', array( __CLASS__, 'schedule_orphan_prune' ) );
+	}
+
+	/**
+	 * Ensure a single daily recurring Action Scheduler action is scheduled.
+	 *
+	 * Idempotent: no-ops when one is already scheduled, so it can run on every
+	 * load. No-ops too when Action Scheduler is unavailable (it ships with
+	 * WooCommerce, so this only guards the rare pre-init / partial-install path).
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return void
+	 */
+	public static function schedule_orphan_prune(): void {
+		if ( ! function_exists( 'as_has_scheduled_action' ) || ! function_exists( 'as_schedule_recurring_action' ) ) {
+			return;
+		}
+
+		if ( as_has_scheduled_action( self::PRUNE_HOOK, array(), self::PRUNE_GROUP ) ) {
+			return;
+		}
+
+		as_schedule_recurring_action( time() + DAY_IN_SECONDS, DAY_IN_SECONDS, self::PRUNE_HOOK, array(), self::PRUNE_GROUP );
+	}
+
+	/**
+	 * Cancel the recurring orphan-prune action. Called on plugin deactivation.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return void
+	 */
+	public static function unschedule_orphan_prune(): void {
+		if ( function_exists( 'as_unschedule_all_actions' ) ) {
+			as_unschedule_all_actions( self::PRUNE_HOOK, array(), self::PRUNE_GROUP );
+		}
+	}
+
+	/**
+	 * The orphan-key TTL in seconds: how long a provisional (never-used) plugin
+	 * key may live before the prune removes it. Default 48h, filterable.
+	 *
+	 * 48h is safe because ShipStation validates a custom store on save by
+	 * calling the export endpoint, which stamps `last_access` within minutes — a
+	 * pair with zero auth after 48h was never wired into ShipStation.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return int Seconds.
+	 */
+	public static function orphan_ttl_seconds(): int {
+		/**
+		 * Filter the orphan-key TTL (seconds). A provisional plugin key with no
+		 * `last_access` is pruned once it is older than this.
+		 *
+		 * @since 5.2.0
+		 *
+		 * @param int $ttl Default 48 hours, in seconds.
+		 */
+		return (int) apply_filters( 'woocommerce_shipstation_orphan_key_ttl', 48 * HOUR_IN_SECONDS );
+	}
+
+	/**
+	 * The "active" window in seconds: how recently ShipStation must have pinged a
+	 * key (its `last_access`) for the key to count as actively connected rather
+	 * than stale. Default 24h, filterable.
+	 *
+	 * ShipStation's polling cadence varies and can be much longer than once
+	 * assumed, so 24h is a deliberately generous buffer: it never falsely flags a
+	 * store that simply polls infrequently, while still surfacing keys that have
+	 * genuinely stopped connecting. This is the single recency window for the whole
+	 * connection UI — it drives the key list's display (active = full opacity;
+	 * once-used-but-now-silent = dimmed + flagged for manual delete), the
+	 * Connections table's per-row pill, and the section/global health banner — so
+	 * the banner can never warn while a route's pill still reads Active. It never
+	 * auto-deletes anything.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return int Seconds.
+	 */
+	public static function active_window_seconds(): int {
+		/**
+		 * Filter the "active key" window (seconds). A key whose last ShipStation
+		 * ping is within this window renders as actively connected; older =
+		 * stale (dimmed, manual-delete only).
+		 *
+		 * @since 5.2.0
+		 *
+		 * @param int $window Default 24 hours, in seconds.
+		 */
+		return (int) apply_filters( 'woocommerce_shipstation_active_key_window', self::ACTIVE_WINDOW_SECONDS );
+	}
+
+	/**
+	 * Maximum the latest DIRECT ShipStation hit may lag the latest WordPress.com
+	 * proxy hit before the direct route counts as no longer keeping pace — the
+	 * pre-disconnect safety signal (SHIPSTN-142).
+	 *
+	 * ShipStation polls every route it has on essentially the same cadence, so
+	 * when both are live their last hits land within a second or two (drifts of
+	 * ~10s have been observed on healthy stores). Once direct falls well behind
+	 * the proxy, that route has stopped while the proxy keeps going. 30s sits
+	 * comfortably above the healthy drift, so it flags a genuinely stalled direct
+	 * route without tripping on ordinary jitter.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return int Seconds.
+	 */
+	public static function direct_lag_tolerance_seconds(): int {
+		/**
+		 * Filter the allowed lag (seconds) of the latest direct ShipStation hit
+		 * behind the latest WordPress.com proxy hit before the direct route is
+		 * treated as stalled (unsafe to disconnect).
+		 *
+		 * @since 5.2.0
+		 *
+		 * @param int $tolerance Default 30 seconds.
+		 */
+		return (int) apply_filters( 'woocommerce_shipstation_direct_lag_tolerance', 30 );
+	}
+
+	/**
+	 * Prune provisional (never-used) plugin key rows older than the TTL.
+	 *
+	 * A row is pruned only when ALL hold:
+	 *  - it is plugin-minted (recognized prefix — never a merchant key);
+	 *  - it has never been used — `last_access` is NULL (the column default),
+	 *    empty, or the MySQL zero datetime; ShipStation never authenticated with
+	 *    it, so it is not a live credential (this is how the live connection is
+	 *    preserved);
+	 *  - its recorded `minted_at` is older than {@see orphan_ttl_seconds()} (rows
+	 *    with no recorded mint time have unknowable age and are left alone);
+	 *  - it is NOT the newest plugin row — cheap insurance against deleting a
+	 *    freshly minted pair a slow-to-paste merchant is still about to use.
+	 *
+	 * @since 5.2.0
+	 *
+	 * @return void
+	 */
+	public static function prune_orphan_keys(): void {
+		global $wpdb;
+
+		// Give any untracked plugin key a mint baseline so legacy never-used keys
+		// become prunable rather than lingering forever.
+		self::backfill_missing_minted_at();
+
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				"SELECT key_id, last_access FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_secret LIKE %s OR consumer_secret LIKE %s ORDER BY key_id DESC",
+				$wpdb->esc_like( self::API_SECRET_PREFIX ) . '%',
+				$wpdb->esc_like( self::WPCOM_API_SECRET_PREFIX ) . '%'
+			),
+			ARRAY_A
+		);
+
+		// Fewer than two plugin rows means the only candidate would be the
+		// newest, which is always protected; nothing to do.
+		if ( ! is_array( $rows ) || count( $rows ) < 2 ) {
+			return;
+		}
+
+		$ttl           = self::orphan_ttl_seconds();
+		$now           = time();
+		$newest_key_id = (int) $rows[0]['key_id']; // ORDER BY key_id DESC.
+
+		foreach ( $rows as $row ) {
+			$key_id = (int) $row['key_id'];
+
+			// Protect the newest plugin row.
+			if ( $key_id === $newest_key_id ) {
+				continue;
+			}
+
+			// Confirmed working — ShipStation has authenticated with it. A never-used
+			// row reads NULL (the column default); some MySQL modes surface the zero
+			// datetime instead, so treat both as "never used" to match the display
+			// path in WC_ShipStation_Integration::get_sorted_plugin_key_rows().
+			$last_access = isset( $row['last_access'] ) ? $row['last_access'] : null;
+			if ( null !== $last_access && '' !== $last_access && '0000-00-00 00:00:00' !== $last_access ) {
+				continue;
+			}
+
+			// Unknown mint time (legacy row) — age is unknowable, leave it.
+			$minted_at = self::get_key_minted_at( $key_id );
+			if ( null === $minted_at ) {
+				continue;
+			}
+
+			if ( ( $now - $minted_at ) <= $ttl ) {
+				continue;
+			}
+
+			self::delete_plugin_key_row( $key_id );
+		}
+	}
+
+	/**
+	 * Get the CTA that sends the merchant to the ShipStation settings tab, where
+	 * the connection details and credentials now live inline (SHIPSTN-142). This
+	 * replaces the former "View Authentication Data" modal trigger; the modal was
+	 * removed in favour of the inline section.
+	 *
+	 * @return string Link HTML.
 	 */
 	public static function get_auth_button_html(): string {
 		return sprintf(
-			'<button type="button" id="shipstation-view-auth" class="button button-primary shipstation-view-auth">%s</button>',
-			esc_html__( 'View Authentication Data', 'woocommerce-shipstation-integration' )
+			'<a href="%s" class="button button-primary">%s</a>',
+			esc_url( admin_url( 'admin.php?page=wc-settings&tab=integration&section=shipstation' ) ),
+			esc_html__( 'View ShipStation connection details', 'woocommerce-shipstation-integration' )
 		);
 	}
 }

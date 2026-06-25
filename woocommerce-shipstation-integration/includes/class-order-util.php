@@ -195,6 +195,74 @@ class Order_Util {
 	}
 
 	/**
+	 * Determine whether an order line item should be treated as shippable for export.
+	 *
+	 * Normally this is just the product's own needs_shipping() flag. The one
+	 * exception is a WooCommerce Product Bundles "container" line item: when a
+	 * bundle is configured as "Assembled" the whole bundle ships as a single
+	 * physical parcel (the container), and Product Bundles records the immutable
+	 * order-time meta `_bundle_weight` on that container item. If the merchant
+	 * later switches the bundle to "Unassembled", the live bundle product is
+	 * forced virtual and its needs_shipping() returns false, which would
+	 * retroactively strip historical Assembled orders of their only shippable
+	 * line and leave ShipStation with nothing to ship and no ShipNotify to send
+	 * (SHIPSTN-138). The order-time `_bundle_weight` meta lets us keep treating
+	 * such a container as shippable, matching how the order was originally
+	 * exported.
+	 *
+	 * @since 5.1.2
+	 *
+	 * @param \WC_Order_Item         $item    Order line item.
+	 * @param \WC_Product|false|null $product Pre-fetched product for the item when
+	 *                                        available; pass null to resolve it here.
+	 *
+	 * @return bool
+	 */
+	public static function item_needs_shipping( $item, $product = null ): bool {
+		if ( null === $product ) {
+			$product = is_callable( array( $item, 'get_product' ) ) ? $item->get_product() : false;
+		}
+
+		// Items without a live product (fees, or a since-deleted product) have
+		// nothing to export and are never shippable.
+		if ( ! $product instanceof \WC_Product ) {
+			return false;
+		}
+
+		if ( $product->needs_shipping() ) {
+			return true;
+		}
+
+		// The product exists but reports no shipping. Keep an assembled bundle
+		// container shippable based on its immutable order-time state.
+		return self::is_assembled_bundle_container( $item );
+	}
+
+	/**
+	 * Whether the order item is a Product Bundles container that shipped as a
+	 * single assembled parcel at order time.
+	 *
+	 * Product Bundles writes the `_bundle_weight` meta on a container line item
+	 * only when the bundle needed shipping at purchase time, and never rewrites
+	 * it afterwards, so its presence is a reliable record that the container was
+	 * a physical shipment for this order regardless of the live product's
+	 * current virtual state.
+	 *
+	 * @since 5.1.2
+	 *
+	 * @param \WC_Order_Item $item Order line item.
+	 *
+	 * @return bool
+	 */
+	private static function is_assembled_bundle_container( $item ): bool {
+		if ( ! is_callable( array( $item, 'get_meta' ) ) ) {
+			return false;
+		}
+
+		return '' !== (string) $item->get_meta( '_bundle_weight', true );
+	}
+
+	/**
 	 * Check whether a given item ID is a shippable item.
 	 *
 	 * @since 4.7.6
@@ -206,10 +274,7 @@ class Order_Util {
 	 * @return bool Returns true if item is shippable product.
 	 */
 	public static function is_shippable_item( WC_Order $order, int $item_id ): bool {
-		$item    = $order->get_item( $item_id );
-		$product = is_callable( array( $item, 'get_product' ) ) ? $item->get_product() : false;
-
-		return $product ? $product->needs_shipping() : false;
+		return self::item_needs_shipping( $order->get_item( $item_id ) );
 	}
 
 	/**
@@ -227,11 +292,11 @@ class Order_Util {
 			$product = is_callable( array( $item, 'get_product' ) ) ? $item->get_product() : false;
 			$qty     = is_callable( array( $item, 'get_quantity' ) ) ? $item->get_quantity() : false;
 
-			if ( ! $product instanceof \WC_Product || false === $qty ) {
+			if ( false === $qty ) {
 				continue;
 			}
 
-			if ( $product->needs_shipping() ) {
+			if ( self::item_needs_shipping( $item, $product ) ) {
 				$needs_shipping += ( $qty - abs( $order->get_qty_refunded_for_item( $item_id ) ) );
 			}
 		}

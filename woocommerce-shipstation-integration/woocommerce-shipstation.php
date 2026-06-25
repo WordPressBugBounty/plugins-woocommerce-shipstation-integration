@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ShipStation for WooCommerce
  * Plugin URI: https://woocommerce.com/products/shipstation-integration/
- * Version: 5.1.1
+ * Version: 5.2.0
  * Description: Power your entire shipping operation from one platform.
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
@@ -39,7 +39,7 @@ if ( ! defined( 'WC_SHIPSTATION_PLUGIN_URL' ) ) {
 	define( 'WC_SHIPSTATION_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 }
 
-define( 'WC_SHIPSTATION_VERSION', '5.1.1' ); // WRCS: DEFINED_VERSION.
+define( 'WC_SHIPSTATION_VERSION', '5.2.0' ); // WRCS: DEFINED_VERSION.
 
 // Composer + Jetpack autoloader. Ships with the production zip; may be absent in
 // dev checkouts where `composer install` has not been run.
@@ -57,3 +57,41 @@ function woocommerce_shipstation_instance() {
 }
 
 woocommerce_shipstation_instance();
+
+/**
+ * Clean up scheduled background jobs on deactivation.
+ *
+ * Cancels the daily Action Scheduler orphan-key prune (SHIPSTN-142). Guarded by
+ * class_exists because the class is only loaded once WooCommerce is active.
+ *
+ * @return void
+ */
+function woocommerce_shipstation_deactivate() {
+	if ( class_exists( '\WooCommerce\Shipping\ShipStation\Auth_Controller' ) ) {
+		\WooCommerce\Shipping\ShipStation\Auth_Controller::unschedule_orphan_prune();
+	}
+}
+
+register_deactivation_hook( __FILE__, 'woocommerce_shipstation_deactivate' );
+
+/**
+ * Create the ShipStation connection-log table on activation (SHIPSTN-142).
+ *
+ * The class is loaded explicitly here because activation fires before this
+ * plugin's plugins_loaded bootstrap has run load_files(). Existing installs get
+ * the table via Connection_Log::maybe_install() on the next load, so this only
+ * fast-tracks a fresh activation.
+ *
+ * @return void
+ */
+function woocommerce_shipstation_activate() {
+	// Connection_Log::install() logs via Logger on its failure branch, and this
+	// activation hook runs before plugins_loaded fires load_files(), so neither
+	// class is loaded yet. Load both explicitly to avoid a fatal that would mask
+	// the underlying DB error on a locked-down (no ALTER/CREATE) database.
+	require_once WC_SHIPSTATION_ABSPATH . 'includes/class-logger.php';
+	require_once WC_SHIPSTATION_ABSPATH . 'includes/class-connection-log.php';
+	\WooCommerce\Shipping\ShipStation\Connection_Log::install();
+}
+
+register_activation_hook( __FILE__, 'woocommerce_shipstation_activate' );

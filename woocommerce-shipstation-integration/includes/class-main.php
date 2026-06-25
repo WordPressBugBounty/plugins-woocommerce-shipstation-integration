@@ -94,6 +94,15 @@ class Main {
 		$this->load_files();
 		$this->maybe_init_wpcom_connection();
 
+		// Create/upgrade the ShipStation connection-log table when needed
+		// (version-gated; a no-op once installed).
+		Connection_Log::maybe_install();
+
+		// Wire the daily Action Scheduler job that prunes never-used plugin API
+		// keys (SHIPSTN-142 credentials redesign). Registers its handler and
+		// schedules the recurring action on `init`.
+		Auth_Controller::register_orphan_prune();
+
 		add_action( 'before_woocommerce_init', array( $this, 'before_woocommerce_init' ) );
 		add_action( 'woocommerce_init', array( $this, 'load_rest_api' ) );
 
@@ -107,7 +116,15 @@ class Main {
 	 * @return void
 	 */
 	protected function maybe_init_wpcom_connection(): void {
-		if ( ! Features::is_wpcom_transport_enabled() ) {
+		// The transport toggle gates whether ShipStation requests are *routed*
+		// through WordPress.com. In the admin, though, always make the connection
+		// available so the settings tab can render — and operate — the
+		// connect/disconnect controls regardless of the toggle (the controls are
+		// CSS-hidden until the checkbox is ticked, so the status is "already there"
+		// when it is enabled). The bootstrap's admin hooks all no-op without a
+		// pending connect/disconnect action, so this is safe on any admin page.
+		// Frontend and REST stay gated by the toggle, preserving request routing.
+		if ( ! Features::is_wpcom_transport_enabled() && ! is_admin() ) {
 			return;
 		}
 
@@ -158,9 +175,11 @@ class Main {
 	public function load_files() {
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-features.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-order-util.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-connection-log.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-wpcom-connection.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-auth-controller.php';
+		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-global-connection-banner.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-logger.php';
 
 		// Options class is side-effect-free and is reached from data-settings.php

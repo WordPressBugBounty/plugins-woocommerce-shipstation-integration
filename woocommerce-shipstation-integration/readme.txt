@@ -7,7 +7,7 @@ WC tested up to: 10.9
 WC requires at least: 10.7
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.1.1
+Stable tag: 5.2.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,11 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.2.0 - 2026-06-25 =
+* Add   - A settings toggle to enable the WordPress.com transport, no developer feature flag required.
+* Add   - Manage credentials, monitor connection health, and troubleshoot issues from a new connection section on the ShipStation settings tab.
+* Fix   - Restore ShipStation shipment notifications for orders containing a Product Bundle that was changed from Assembled to Unassembled after purchase.
 
 = 5.1.1 - 2026-06-22 =
 * Tweak - WooCommerce 10.9 Compatibility.
