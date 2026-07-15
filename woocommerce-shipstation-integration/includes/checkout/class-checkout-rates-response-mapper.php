@@ -118,14 +118,76 @@ final class Checkout_Rates_Response_Mapper {
 			),
 		);
 
+		// description and delivery_time map onto the native WC_Shipping_Rate fields
+		// (WC 9.2+), which the block cart/checkout renders. The shipping method applies
+		// them to the rate object after add_rate(). They are deliberately kept off the
+		// label so the label (which WooCommerce persists as the order shipping method
+		// title) stays the bare carrier name.
 		if ( isset( $quote['description'] ) && is_string( $quote['description'] ) && '' !== $quote['description'] ) {
-			$rate['meta_data']['description'] = $quote['description'];
+			$rate['description'] = $quote['description'];
 		}
 
-		if ( isset( $quote['transit_time']['duration'] ) && is_numeric( $quote['transit_time']['duration'] ) ) {
-			$rate['meta_data']['transit_time'] = (int) $quote['transit_time']['duration'];
+		$delivery_time = isset( $quote['transit_time'] ) && is_array( $quote['transit_time'] )
+			? $this->format_delivery_time( $quote['transit_time'] )
+			: '';
+
+		if ( '' !== $delivery_time ) {
+			$rate['delivery_time'] = $delivery_time;
 		}
 
 		return $rate;
+	}
+
+	/**
+	 * Format a ShipStation transit_time block into a human-readable delivery estimate.
+	 *
+	 * Returns an empty string when the duration is missing, non-numeric, or not positive.
+	 * The duration is rounded to the nearest whole unit. Known units (day, business day,
+	 * hour, week) are localized with correct singular/plural forms; a missing unit defaults
+	 * to days. An unrecognized unit is passed through sanitized of any markup.
+	 *
+	 * @since 5.2.1
+	 *
+	 * @param array $transit_time ShipStation transit_time block (duration, units).
+	 *
+	 * @return string Delivery estimate such as "2 days" or "1 business day", or '' when unavailable.
+	 */
+	private function format_delivery_time( array $transit_time ): string {
+		if ( ! isset( $transit_time['duration'] ) || ! is_numeric( $transit_time['duration'] ) ) {
+			return '';
+		}
+
+		$duration = (int) round( (float) $transit_time['duration'] );
+
+		if ( $duration < 1 ) {
+			return '';
+		}
+
+		$units = isset( $transit_time['units'] ) && is_string( $transit_time['units'] )
+			? strtolower( str_replace( '_', ' ', trim( $transit_time['units'] ) ) )
+			: '';
+
+		switch ( $units ) {
+			case '':
+			case 'day':
+			case 'days':
+				/* translators: %d: number of days. */
+				return sprintf( _n( '%d day', '%d days', $duration, 'woocommerce-shipstation-integration' ), $duration );
+			case 'business day':
+			case 'business days':
+				/* translators: %d: number of business days. */
+				return sprintf( _n( '%d business day', '%d business days', $duration, 'woocommerce-shipstation-integration' ), $duration );
+			case 'hour':
+			case 'hours':
+				/* translators: %d: number of hours. */
+				return sprintf( _n( '%d hour', '%d hours', $duration, 'woocommerce-shipstation-integration' ), $duration );
+			case 'week':
+			case 'weeks':
+				/* translators: %d: number of weeks. */
+				return sprintf( _n( '%d week', '%d weeks', $duration, 'woocommerce-shipstation-integration' ), $duration );
+			default:
+				// Unrecognized unit from the API: render defensively, stripped of any markup.
+				return $duration . ' ' . sanitize_text_field( $units );
+		}
 	}
 }

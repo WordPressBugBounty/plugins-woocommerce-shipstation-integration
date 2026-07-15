@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use Automattic\WooCommerce\Utilities\FeaturesUtil;
+use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Classic_Label;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Shipping_Method;
 use WooCommerce\Shipping\ShipStation\REST_API_Loader;
@@ -108,6 +109,51 @@ class Main {
 
 		add_filter( 'woocommerce_shipping_methods', array( $this, 'register_shipping_methods' ) );
 		add_filter( 'woocommerce_hidden_order_itemmeta', array( $this, 'hide_internal_order_item_meta' ) );
+
+		// Toggling Checkout Rates on or off must invalidate WC's cached package
+		// rates, otherwise checkout keeps serving rates calculated while the
+		// feature was on (or omits them after it is turned back on).
+		add_action(
+			'update_option_woocommerce_shipstation_settings',
+			array( Checkout_Rates_Options::class, 'flush_shipping_cache_on_settings_change' ),
+			10,
+			2
+		);
+
+		// Moving the store across the supported-country boundary turns Checkout Rates
+		// on or off just as the toggle does, and WC regenerates no shipping cache of
+		// its own when the base country changes.
+		add_action(
+			'update_option_woocommerce_default_country',
+			array( Checkout_Rates_Options::class, 'flush_shipping_cache_on_base_country_change' ),
+			10,
+			2
+		);
+
+		// Any shipping calculation that runs outside a checkout context (a classic
+		// add-to-cart page render, the wc-ajax=get_refreshed_fragments call that trails an
+		// AJAX add-to-cart, an unrelated front-end hit that mutates the cart) makes WC cache
+		// a package rate set with no ShipStation rate, which checkout then reuses via the
+		// matching package hash (SHIPSTN-157). Note when WC caches a set, then discard it on
+		// shutdown — before WC_Session_Handler persists the session (its save runs on
+		// shutdown at priority 20) — unless it was produced in a checkout context. Shutdown
+		// is the one point that runs after every rate-caching path in the request, so a
+		// poisoned set can never reach the database and be replayed at checkout.
+		add_filter(
+			'woocommerce_package_rates',
+			array( Checkout_Rates_Options::class, 'note_package_rates_calculated' )
+		);
+		add_action(
+			'shutdown',
+			array( Checkout_Rates_Options::class, 'discard_non_checkout_rate_cache' ),
+			5
+		);
+
+		// Surface each ShipStation checkout rate's delivery estimate and description on the
+		// classic (shortcode) cart/checkout label. Registered unconditionally so it is not
+		// dropped on sites that enable the feature flag after this runs (e.g. a theme's
+		// functions.php); the callback no-ops for non-ShipStation rates.
+		Checkout_Rates_Classic_Label::register();
 	}
 
 	/**
@@ -173,6 +219,10 @@ class Main {
 	 * @since 4.4.5
 	 */
 	public function load_files() {
+		// Loaded first: the integration constructed on `init` and the settings
+		// data dereference WooCommerce enums through this helper, which falls back
+		// to slugs on WooCommerce versions that predate those enums (SHIPSTN-152).
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-enum-helper.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-features.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-order-util.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-connection-log.php';
@@ -190,6 +240,11 @@ class Main {
 		// builder, mapper, API client) load lazily in register_shipping_methods()
 		// because they're only needed when actually calculating rates at checkout.
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-options.php';
+
+		// Classic-checkout label formatter. Like the options class it is lightweight and
+		// side-effect-free (no WC_Shipping_Method parent), so it loads unconditionally and
+		// its filter callback stays resolvable no matter when the feature flag is toggled.
+		include_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-classic-label.php';
 
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-privacy.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-api.php';
@@ -247,7 +302,7 @@ class Main {
 		// Checkout Rates can only be provisioned over the REST API — ShipStation pushes
 		// the rates URL via a REST endpoint and there is no XML path. Without a stored
 		// rates URL the method can never return rates, so don't offer it in the shipping
-		// zone's method list. Mirrors the runtime gate in
+		// zone's method list. This and the enabled check above mirror the runtime gates in
 		// Checkout_Rates_Shipping_Method::calculate_shipping().
 		if ( ! Checkout_Rates_Options::is_configured() ) {
 			return $methods;

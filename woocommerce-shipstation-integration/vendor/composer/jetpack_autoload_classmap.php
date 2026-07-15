@@ -446,6 +446,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Api_Client_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Classic_Label_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Classic_Label_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Options_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Options_Test.php'
@@ -469,6 +473,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Response_Mapper_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Response_Mapper_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Settings_Save_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Settings_Save_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Shipping_Method_Test' => array(
 		'version' => 'dev-trunk',
@@ -502,9 +510,17 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Connection_Log_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Enum_Helper_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Enum_Helper_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Features_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Features_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Non_String_Const_Fixture' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Enum_Helper_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Get_Checkout_Rate_Code_Test' => array(
 		'version' => 'dev-trunk',

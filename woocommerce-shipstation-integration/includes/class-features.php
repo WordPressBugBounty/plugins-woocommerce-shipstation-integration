@@ -7,6 +7,8 @@
 
 namespace WooCommerce\Shipping\ShipStation;
 
+use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -17,18 +19,70 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class Features {
 
 	/**
+	 * Store base countries Checkout Rates is available for. ShipStation limits
+	 * the feature to US accounts at launch (SHIPSTN-155); add 'CA' here once
+	 * ShipStation expands support to Canada.
+	 *
+	 * WooCommerce lists the US territories as separate base countries, but
+	 * ShipStation confirmed they are in scope for the US launch, so they are
+	 * allowed alongside 'US': Puerto Rico, Guam, U.S. Virgin Islands, American
+	 * Samoa, Northern Mariana Islands, and US Minor Outlying Islands.
+	 *
+	 * @var string[]
+	 */
+	private const CHECKOUT_RATES_SUPPORTED_COUNTRIES = array( 'US', 'PR', 'GU', 'VI', 'AS', 'MP', 'UM' );
+
+	/**
 	 * Whether the checkout-rates feature is enabled.
+	 *
+	 * Requires a supported store base country plus the merchant toggle (or the
+	 * enable filter): the country restriction is absolute, so neither the
+	 * toggle nor the filter can surface the feature where ShipStation will not
+	 * return rates.
 	 *
 	 * @return bool
 	 */
 	public static function is_checkout_rates_enabled(): bool {
+		if ( ! self::is_checkout_rates_supported_country() ) {
+			return false;
+		}
+
+		$stored = Checkout_Rates_Options::get_enabled();
 		/**
 		 * Filters whether the Checkout Rates feature is enabled.
 		 *
+		 * Only consulted when the store base country supports Checkout Rates, which
+		 * callers can test with Features::is_checkout_rates_supported_country(). A
+		 * callback returning true cannot surface the feature on an unsupported store.
+		 *
 		 * @since 4.9.6
-		 * @param bool $enabled Whether the feature is enabled. Default false.
+		 * @param bool $enabled Whether the feature is enabled. Default: value of the
+		 *                      merchant-facing checkbox (woocommerce_shipstation_settings['checkout_rates_enabled']).
 		 */
-		return (bool) apply_filters( 'wc_shipstation_checkout_rates_enabled', false );
+		return (bool) apply_filters( 'wc_shipstation_checkout_rates_enabled', $stored );
+	}
+
+	/**
+	 * Whether the store base country is one Checkout Rates supports.
+	 *
+	 * Reads the base location option directly (wc_get_base_location()) rather
+	 * than WC()->countries so the check is safe before the countries instance
+	 * exists.
+	 *
+	 * The country is upper-cased before the match. The Country / State selector
+	 * always stores an uppercase ISO code, but an import or a callback on
+	 * woocommerce_get_base_location can leave a lowercase one behind, and a
+	 * supported store should not lose rates over letter case.
+	 *
+	 * @since 5.3.0
+	 *
+	 * @return bool
+	 */
+	public static function is_checkout_rates_supported_country(): bool {
+		$base_location = wc_get_base_location();
+		$country       = strtoupper( (string) ( $base_location['country'] ?? '' ) );
+
+		return in_array( $country, self::CHECKOUT_RATES_SUPPORTED_COUNTRIES, true );
 	}
 
 	/**

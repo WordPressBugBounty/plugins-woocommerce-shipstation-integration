@@ -1,13 +1,13 @@
 === ShipStation for WooCommerce ===
 Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, dwainm, laurendavissmith001, Kloon
-Tags: shipping, woocommerce, automattic
+Tags: shipping, woocommerce, woo, automattic
 Requires at least: 6.9
 Tested up to: 7.0
 WC tested up to: 10.9
 WC requires at least: 10.7
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.2.0
+Stable tag: 5.3.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.0 - 2026-07-15 =
+* Add   - Checkout Rates: merchants can now enable ShipStation live shipping rates at checkout from the ShipStation integration settings; defaults to off and requires ShipStation provisioning before it can be activated.
+* Fix   - Prevent a fatal error on WooCommerce versions older than the plugin's supported minimum that could take the whole site down; ShipStation now falls back to built-in order-status and product-type values instead of failing to load.
 
 = 5.2.0 - 2026-06-25 =
 * Add   - A settings toggle to enable the WordPress.com transport, no developer feature flag required.

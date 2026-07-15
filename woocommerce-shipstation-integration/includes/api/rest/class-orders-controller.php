@@ -29,7 +29,7 @@ use WP_REST_Server;
 use WooCommerce\Shipping\ShipStation\Order_Util;
 use WooCommerce\Shipping\ShipStation\Checkout;
 use Automattic\WooCommerce\Utilities\NumberUtil;
-use Automattic\WooCommerce\Enums\OrderStatus;
+use WooCommerce\Shipping\ShipStation\Enum_Helper;
 use WP_Error;
 use WooCommerce\Shipping\ShipStation\Logger;
 
@@ -936,15 +936,15 @@ class Orders_Controller extends API_Controller {
 	public function get_payment_status( string $order_status ): string {
 		// Map WooCommerce order status to ShipStation payment status.
 		switch ( $order_status ) {
-			case OrderStatus::PENDING:
+			case Enum_Helper::status_pending():
 				return WC_ShipStation_Integration::AWAITING_PAYMENT_STATUS;
-			case OrderStatus::ON_HOLD:
+			case Enum_Helper::status_on_hold():
 				return WC_ShipStation_Integration::AWAITING_PAYMENT_STATUS;
-			case OrderStatus::CANCELLED:
+			case Enum_Helper::status_cancelled():
 				return WC_ShipStation_Integration::PAYMENT_CANCELLED_STATUS;
-			case OrderStatus::REFUNDED:
+			case Enum_Helper::status_refunded():
 				return WC_ShipStation_Integration::PAYMENT_CANCELLED_STATUS;
-			case OrderStatus::FAILED:
+			case Enum_Helper::status_failed():
 				return WC_ShipStation_Integration::PAYMENT_FAILED_STATUS;
 			default:
 				return WC_ShipStation_Integration::PAID_STATUS;
