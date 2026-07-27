@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, woo, automattic
 Requires at least: 6.9
 Tested up to: 7.0
-WC tested up to: 10.9
-WC requires at least: 10.7
+WC tested up to: 11.0
+WC requires at least: 10.8
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.0
+Stable tag: 5.3.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.1 - 2026-07-27 =
+* Fix   - Stop duplicate "exported to Shipstation" order notes on stores with a persistent object cache and HPOS.
+* Tweak - WooCommerce 11.0 Compatibility.
 
 = 5.3.0 - 2026-07-15 =
 * Add   - Checkout Rates: merchants can now enable ShipStation live shipping rates at checkout from the ShipStation integration settings; defaults to off and requires ShipStation provisioning before it can be activated.

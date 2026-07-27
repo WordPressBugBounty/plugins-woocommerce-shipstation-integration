@@ -1,5 +1,9 @@
 *** ShipStation for WooCommerce ***
 
+= 5.3.1 - 2026-07-27 =
+* Fix   - Stop duplicate "exported to Shipstation" order notes on stores with a persistent object cache and HPOS.
+* Tweak - WooCommerce 11.0 Compatibility.
+
 = 5.3.0 - 2026-07-15 =
 * Add   - Checkout Rates: merchants can now enable ShipStation live shipping rates at checkout from the ShipStation integration settings; defaults to off and requires ShipStation provisioning before it can be activated.
 * Fix   - Prevent a fatal error on WooCommerce versions older than the plugin's supported minimum that could take the whole site down; ShipStation now falls back to built-in order-status and product-type values instead of failing to load.

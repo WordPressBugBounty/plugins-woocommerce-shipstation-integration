@@ -9,6 +9,7 @@ namespace WooCommerce\Shipping\ShipStation;
 
 use Automattic\WooCommerce\Utilities\OrderUtil;
 use Automattic\WooCommerce\Internal\CostOfGoodsSold\CostOfGoodsSoldController;
+use WC_Data_Store;
 use WC_Order;
 use WP_Post;
 
@@ -527,28 +528,80 @@ class Order_Util {
 			return;
 		}
 
-		$to_mark = array();
-
+		// Collect valid WC orders keyed by ID.
+		$candidates = array();
 		foreach ( $orders as $order ) {
 			if ( ! self::is_wc_order( $order ) ) {
 				continue;
 			}
+			$candidates[ $order->get_id() ] = $order;
+		}
 
-			if ( 'yes' === $order->get_meta( '_shipstation_exported', true ) ) {
+		if ( empty( $candidates ) ) {
+			return;
+		}
+
+		global $wpdb;
+		$hpos    = self::custom_orders_table_usage_is_enabled();
+		$sync_on = self::data_sync_is_enabled();
+
+		/*
+		 * Idempotency guard (SHIPSTN-139): read the marker straight from the DB
+		 * rather than $order->get_meta(). The raw marker write below bypasses WC's
+		 * data store and never invalidates the order/meta object cache, so on
+		 * stores with a persistent object cache the cached order keeps reporting
+		 * the pre-marker state; a get_meta() guard would miss and append a
+		 * duplicate "exported" note on every poll. One SELECT covers the batch,
+		 * against the authoritative read table for the active storage backend.
+		 */
+		$read_table = $hpos ? $wpdb->prefix . 'wc_orders_meta' : $wpdb->postmeta;
+		$read_col   = $hpos ? 'order_id' : 'post_id';
+
+		$candidate_ids          = array_keys( $candidates );
+		$candidate_placeholders = implode( ',', array_fill( 0, count( $candidate_ids ), '%d' ) );
+
+		$already_marked = $wpdb->get_col(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $read_table and $read_col are string literals; IDs are %d.
+				"SELECT DISTINCT {$read_col} FROM {$read_table} WHERE meta_key = '_shipstation_exported' AND meta_value = 'yes' AND {$read_col} IN ({$candidate_placeholders})",
+				...$candidate_ids
+			)
+		);
+
+		// If the guard read itself failed, bail. Treating a failed SELECT (which
+		// yields an empty result) as "nothing is marked yet" would send every
+		// candidate down the write path and append a duplicate "exported" note to
+		// orders that already have the marker — the exact symptom this fix targets
+		// (SHIPSTN-139). Skipping this batch is safe: the next poll retries.
+		if ( '' !== $wpdb->last_error ) {
+			Logger::error(
+				sprintf(
+					'mark_orders_exported_bulk guard SELECT failed for %d order(s) (%s): %s',
+					count( $candidate_ids ),
+					implode( ',', array_slice( $candidate_ids, 0, 20 ) ),
+					$wpdb->last_error
+				)
+			);
+			return;
+		}
+
+		// Flipped to an ID-keyed lookup: a batch is up to 500 orders, so a linear
+		// scan per candidate would be quadratic on the poll hot path.
+		$already_marked = array_flip( array_map( 'absint', (array) $already_marked ) );
+
+		$to_mark = array();
+		foreach ( $candidates as $id => $order ) {
+			if ( isset( $already_marked[ $id ] ) ) {
 				continue;
 			}
-
-			$to_mark[ $order->get_id() ] = $order;
+			$to_mark[ $id ] = $order;
 		}
 
 		if ( empty( $to_mark ) ) {
 			return;
 		}
 
-		global $wpdb;
-		$ids     = array_keys( $to_mark );
-		$hpos    = self::custom_orders_table_usage_is_enabled();
-		$sync_on = self::data_sync_is_enabled();
+		$ids = array_keys( $to_mark );
 
 		/*
 		 * Build the list of tables to write to. Under HPOS sync mode both
@@ -560,21 +613,33 @@ class Order_Util {
 		 * |------|------|-----------------------------|
 		 * | off  | off  | wp_postmeta                 |
 		 * | on   | off  | wc_orders_meta              |
-		 * | on   | on   | wc_orders_meta + postmeta   |
-		 * | off  | on   | wp_postmeta + wc_orders_meta|
+		 * | on   | on   | postmeta + wc_orders_meta   |
+		 * | off  | on   | wc_orders_meta + wp_postmeta|
+		 *
+		 * The guard's read table is written LAST and any failure aborts the rest:
+		 * a half-applied write then leaves no visible marker, so the next poll
+		 * retries the whole thing instead of skipping an order it never noted.
 		 */
+		$hpos_target = array(
+			'table' => $wpdb->prefix . 'wc_orders_meta',
+			'col'   => 'order_id',
+		);
+		$cpt_target  = array(
+			'table' => $wpdb->postmeta,
+			'col'   => 'post_id',
+		);
+
 		$targets = array();
-		if ( $hpos || $sync_on ) {
-			$targets[] = array(
-				'table' => $wpdb->prefix . 'wc_orders_meta',
-				'col'   => 'order_id',
-			);
-		}
-		if ( ! $hpos || $sync_on ) {
-			$targets[] = array(
-				'table' => $wpdb->postmeta,
-				'col'   => 'post_id',
-			);
+		if ( $hpos ) {
+			if ( $sync_on ) {
+				$targets[] = $cpt_target;
+			}
+			$targets[] = $hpos_target;
+		} else {
+			if ( $sync_on ) {
+				$targets[] = $hpos_target;
+			}
+			$targets[] = $cpt_target;
 		}
 
 		// Neither `wp_postmeta` nor `wc_orders_meta` has a UNIQUE index on
@@ -591,7 +656,7 @@ class Order_Util {
 
 			$delete_result = $wpdb->query(
 				$wpdb->prepare(
-					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table and $object_col are string literals; $id_placeholders is a list of %d tokens.
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $table and $object_col are string literals; $id_placeholders is a list of %d tokens.
 					"DELETE FROM {$table} WHERE meta_key = '_shipstation_exported' AND {$object_col} IN ({$id_placeholders})",
 					...$ids
 				)
@@ -599,7 +664,7 @@ class Order_Util {
 
 			$insert_result = $wpdb->query(
 				$wpdb->prepare(
-					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table and $object_col are string literals; IDs are %d.
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $table and $object_col are string literals; IDs are %d.
 					"INSERT INTO {$table} ({$object_col}, meta_key, meta_value) VALUES {$row_placeholders}",
 					...$ids
 				)
@@ -616,18 +681,114 @@ class Order_Util {
 					)
 				);
 				$all_ok = false;
+				// Stop before the read table, so no marker becomes visible.
+				break;
 			}
 		}
 
-		// Bail without writing notes if any statement failed — otherwise the
-		// next export run would see an empty marker, push these orders back
-		// onto the queue, and add a second "exported to ShipStation" note.
+		// Bail without writing notes if any statement failed. The read table is
+		// written last, so the guard still sees no marker, the orders stay on the
+		// queue, and the next poll retries the whole write.
 		if ( ! $all_ok ) {
 			return;
 		}
 
+		// The raw writes above bypass WC's data store, so nothing invalidates
+		// the order/meta object cache automatically. Clear the per-order caches
+		// for the written IDs so the next poll's guard read — and any other
+		// get_meta( '_shipstation_exported' ) reader (e.g. the privacy
+		// exporter) — sees the marker instead of stale, pre-marker meta
+		// (SHIPSTN-139).
+		self::invalidate_exported_marker_cache( $ids, $hpos, $sync_on );
+
+		// Residual race (SHIPSTN-139): the guard SELECT and the marker write are
+		// not one atomic transaction, so two ShipStation polls overlapping on the
+		// same order can both pass the guard and each add a note. The direct-DB
+		// guard closes the common cache-staleness cause and shrinks the window to
+		// truly concurrent polls; fully closing it would need row locking
+		// (GET_LOCK / SELECT ... FOR UPDATE), a heavier change deferred for now.
 		foreach ( $to_mark as $order ) {
 			$order->add_order_note( __( 'Order has been exported to Shipstation', 'woocommerce-shipstation-integration' ) );
+		}
+	}
+
+	/**
+	 * Invalidate the per-order object/meta caches for the `_shipstation_exported`
+	 * marker after a raw-SQL write bypassed WC's data store.
+	 *
+	 * Mirrors the invalidation WooCommerce performs itself when CRUD is bypassed
+	 * for performance (see OrdersTableDataStore::clear_cached_data() and
+	 * get_post_orders_for_ids()). Without this, a persistent object cache keeps
+	 * serving the pre-marker order/meta, so the idempotency guard and other
+	 * get_meta() readers miss the marker (SHIPSTN-139).
+	 *
+	 * @since 5.3.1
+	 *
+	 * @param int[] $ids     Order IDs whose marker was just written.
+	 * @param bool  $hpos    Whether HPOS is the active storage backend.
+	 * @param bool  $sync_on Whether HPOS<->posts sync is enabled.
+	 * @return void
+	 */
+	private static function invalidate_exported_marker_cache( array $ids, bool $hpos, bool $sync_on ): void {
+		if ( empty( $ids ) ) {
+			return;
+		}
+
+		// $order->get_meta() reads the 'orders'-group meta cache on BOTH backends
+		// (WC_Abstract_Order::$cache_group) before the DB, and the raw write never
+		// busts it — so clear it for every backend, not just HPOS. Mirrors
+		// OrdersTableDataStore::get_post_orders_for_ids(). Only the delete is
+		// batched: generate_meta_cache_key() still does a wp_cache_get per ID.
+		wp_cache_delete_multiple(
+			array_map(
+				static function ( $id ) {
+					return WC_Order::generate_meta_cache_key( $id, 'orders' );
+				},
+				$ids
+			),
+			'orders'
+		);
+
+		if ( $hpos ) {
+			// Both wc_get_container()->get() and WC_Data_Store::load() can throw,
+			// and they run after the marker is committed but before the note. An
+			// unguarded throw loses the note permanently — the direct-DB guard
+			// skips the order on every later poll. Invalidation is best-effort.
+			try {
+				// wc_get_order() consults OrderCache before the data store, and
+				// clear_cached_data() does not touch OrderCache — clear both, as
+				// OrdersTableDataStore::delete_order_data_from_custom_order_tables() does.
+				$order_cache_class = 'Automattic\\WooCommerce\\Caches\\OrderCache';
+				if ( class_exists( $order_cache_class ) && function_exists( 'wc_get_container' ) ) {
+					$order_cache = wc_get_container()->get( $order_cache_class );
+					foreach ( $ids as $id ) {
+						$order_cache->remove( $id );
+					}
+				}
+
+				// Only the HPOS data store implements clear_cached_data(), and it is
+				// @internal — method_exists() guards removal, not a signature change.
+				$store           = WC_Data_Store::load( 'order' );
+				$store_classname = $store->get_current_class_name();
+				if ( method_exists( $store_classname, 'clear_cached_data' ) ) {
+					// call_user_func: WC_Data_Store proxies this through __call(),
+					// which the WC stubs do not model, so a direct call trips PHPStan.
+					call_user_func( array( $store, 'clear_cached_data' ), $ids );
+				}
+			} catch ( \Throwable $e ) {
+				// \Throwable, not \Exception: a broken service definition surfaces
+				// as \Error, which would otherwise fatal and lose the note.
+				Logger::error(
+					sprintf( 'mark_orders_exported_bulk HPOS cache invalidation failed: %s', $e->getMessage() )
+				);
+			}
+		}
+
+		if ( ! $hpos || $sync_on ) {
+			// Clear the CPT postmeta cache (authoritative read source when HPOS
+			// is off; kept consistent under sync). Batched for the same hot-path
+			// reason as the 'orders' delete above. No-op if unused.
+			wp_cache_delete_multiple( $ids, 'post_meta' );
 		}
 	}
 

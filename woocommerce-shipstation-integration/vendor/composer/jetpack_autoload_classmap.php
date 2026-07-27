@@ -534,6 +534,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Item_Needs_Shipping_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Mark_Orders_Exported_Bulk_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Mark_Orders_Exported_Bulk_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\REST_API_Loader_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/REST_API_Loader_Test.php'
