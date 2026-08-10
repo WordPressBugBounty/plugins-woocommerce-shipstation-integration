@@ -24,6 +24,63 @@ defined( 'ABSPATH' ) || exit;
  */
 class Order_Util {
 	/**
+	 * Maximum number of shipment identifiers kept in the
+	 * _shipstation_processed_shipments order meta.
+	 *
+	 * @var int
+	 */
+	private const MAX_PROCESSED_SHIPMENTS = 50;
+
+	/**
+	 * Default maximum number of order notes exported per order.
+	 *
+	 * The fetch was unbounded, so orders with a large note history could
+	 * exhaust PHP's memory limit (SHIPSTN-161's suspected mechanism,
+	 * reproduced on a seeded store). Orders over the bound export their
+	 * newest notes.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @var int
+	 */
+	public const DEFAULT_ORDER_NOTES_LIMIT = 50;
+
+	/**
+	 * Ceiling for the order-notes limit filter.
+	 *
+	 * The batch fetch scales as limit times batch size (up to 500 orders per
+	 * REST page), so an uncapped filter value could rebuild the unbounded
+	 * fetch this limit exists to prevent.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @var int
+	 */
+	public const MAX_ORDER_NOTES_LIMIT = 500;
+
+	/**
+	 * Maximum comment rows a single bulk note query may materialise.
+	 *
+	 * The per-order limit alone does not bound the batch: at the documented
+	 * ceilings (500 notes x 500 orders per page) a single query could fetch
+	 * 250,000 rows, more than the unbounded fetch this bound replaces
+	 * (SHIPSTN-161). The batch is chunked so no query exceeds this many
+	 * counted notes; 5,000 matches the configuration the fix was measured
+	 * safe at (100 orders x 50 notes, 143 MB full-request peak). It has not
+	 * been re-measured at the 500-order page ceiling.
+	 *
+	 * @var int
+	 */
+	private const MAX_BATCH_NOTES = 5000;
+
+	/**
+	 * Comment author WooCommerce writes on its own system notes.
+	 *
+	 * @var string
+	 */
+	private const SYSTEM_NOTE_AUTHOR = 'WooCommerce';
+
+	/**
 	 * Constant variable for admin screen name.
 	 *
 	 * @var string $legacy_order_admin_screen.
@@ -451,9 +508,18 @@ class Order_Util {
 	/**
 	 * Get order notes grouped by visibility.
 	 *
-	 * Fetches all approved order notes for a given order and separates them into:
+	 * Fetches the order's newest notes, up to the order-notes limit (see
+	 * get_order_notes_limit()), and separates them into:
 	 * - Customer notes (visible to the customer).
 	 * - Private notes (internal use only).
+	 *
+	 * The limit applies to each group on its own: an order over the limit keeps
+	 * its newest notes per group, so a run of newer customer notes cannot push
+	 * every private note out of the export, or the other way round.
+	 *
+	 * @since 4.9.0
+	 * @since 5.0.2 Grouped by visibility.
+	 * @since 5.3.2 Bounded at the order-notes limit, applied per visibility group.
 	 *
 	 * @param WC_Order $order Order object.
 	 *
@@ -463,33 +529,451 @@ class Order_Util {
 	 * }
 	 */
 	public static function get_order_notes( WC_Order $order ): array {
+		if ( 0 === $order->get_id() ) {
+			// WP_Comment_Query drops the post_id clause for 0, so an unsaved
+			// order would fetch other orders' notes.
+			return self::empty_note_groups();
+		}
+
 		if ( isset( self::$order_notes_cache[ $order->get_id() ] ) ) {
 			return self::$order_notes_cache[ $order->get_id() ];
 		}
 
-		$args = array(
-			'post_id' => $order->get_id(),
-			'approve' => 'approve',
-			'type'    => 'order_note',
+		$limit = self::get_order_notes_limit();
+
+		// Probe one row past the limit, so an order holding exactly the limit
+		// fills a window without overflowing it and is served from this one
+		// query instead of being refetched per group.
+		$fetched = self::fetch_order_notes(
+			self::order_note_query_args(
+				array( 'post_id' => $order->get_id() ),
+				$limit + 1
+			)
 		);
 
-		remove_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10 );
-		$notes = get_comments( $args );
-		add_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10, 1 );
+		if ( null === $fetched ) {
+			// The query failed (logged at the fetch). Do not cache, so a later
+			// caller can retry.
+			return self::empty_note_groups();
+		}
 
-		$order_notes = array(
-			'private'  => array(),
-			'customer' => array(),
+		if ( count( $fetched ) <= $limit ) {
+			// The order fits in one window, so every note is here and each
+			// group is complete. The comment-meta lazyloader primes the whole
+			// window in one query on the first meta read in group_order_notes().
+			self::$order_notes_cache[ $order->get_id() ] = self::group_order_notes( $fetched );
+
+			return self::$order_notes_cache[ $order->get_id() ];
+		}
+
+		// An overfull window means the order has more notes than the limit,
+		// and the newest-N-of-any-kind set can starve one visibility group to
+		// empty while the other overflows. Refetch with the bound per group.
+		$grouped = self::fetch_order_notes_by_group( $order->get_id(), $limit );
+
+		if ( in_array( null, $grouped, true ) ) {
+			// Only the failed group degrades (logged at the fetch): the probe
+			// window is real data, so that group exports its slice of it,
+			// trimmed to the bound. The slice can still be empty when the
+			// window holds only the other group's notes; a group whose own
+			// query succeeded keeps its exact result either way. Not cached,
+			// so a later caller can retry the full path.
+			$window = self::group_order_notes( array_slice( $fetched, 0, $limit ) );
+
+			foreach ( $grouped as $group => $notes ) {
+				if ( null === $notes ) {
+					$grouped[ $group ] = $window[ $group ];
+				}
+			}
+
+			return $grouped;
+		}
+
+		self::$order_notes_cache[ $order->get_id() ] = $grouped;
+
+		return self::$order_notes_cache[ $order->get_id() ];
+	}
+
+	/**
+	 * Build the get_comments() args shared by every order-note fetch.
+	 *
+	 * One builder so the live fetch paths cannot drift apart. The raw-SQL
+	 * counts mirror these defaults by hand and are the one place that can
+	 * still drift; keep them in step when editing this.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param array $target Target clause: array( 'post_id' => $id ) or array( 'post__in' => $ids ).
+	 * @param int   $number Maximum rows to fetch.
+	 * @return array Arguments for get_comments().
+	 */
+	private static function order_note_query_args( array $target, int $number ): array {
+		return $target + array(
+			'approve'      => 'approve',
+			'type'         => 'order_note',
+			'number'       => $number,
+			// Stated, not inherited: with `number` this is what keeps the
+			// newest notes.
+			'orderby'      => 'comment_date_gmt',
+			'order'        => 'DESC',
+			// The comment-query cache key hashes query vars only, so the
+			// swapped clauses in fetch_order_notes() are invisible to it. A
+			// dedicated domain keeps this fetch's narrowed IDs from being
+			// served to a third-party query with identical vars, and theirs
+			// from being served here.
+			'cache_domain' => 'wc_shipstation_order_notes',
 		);
+	}
 
-		foreach ( $notes as $note ) {
-			if ( 'WooCommerce' !== $note->comment_author ) {
-				$note_type                   = (bool) get_comment_meta( $note->comment_ID, 'is_customer_note', true ) ? 'customer' : 'private';
-				$order_notes[ $note_type ][] = html_entity_decode( $note->comment_content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	/**
+	 * Maximum number of order notes exported per order.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @return int Always between 1 and MAX_ORDER_NOTES_LIMIT.
+	 */
+	public static function get_order_notes_limit(): int {
+		/**
+		 * Filters the maximum number of order notes exported per order.
+		 *
+		 * The limit applies to each visibility group (private and customer) on
+		 * its own, so an order over it keeps its newest notes per group. A
+		 * value below 1 is ignored and a value above 500 is clamped: an
+		 * unbounded fetch is the fault this bound exists to prevent.
+		 *
+		 * Raising the limit raises peak memory: every query is individually
+		 * bounded, but the per-request notes map still holds limit x page-size
+		 * note strings at once (plus the response holding them again), and the
+		 * fix was only measured safe at the defaults (50 notes x 100 orders).
+		 * At the ceilings (500 x 500) that map alone can reach hundreds of MB.
+		 *
+		 * @since 5.3.2
+		 *
+		 * @param int $limit Maximum notes per order. Default 50, range 1 to 500.
+		 */
+		$limit = (int) apply_filters( 'woocommerce_shipstation_order_notes_limit', self::DEFAULT_ORDER_NOTES_LIMIT );
+
+		if ( $limit < 1 ) {
+			return self::DEFAULT_ORDER_NOTES_LIMIT;
+		}
+
+		return min( $limit, self::MAX_ORDER_NOTES_LIMIT );
+	}
+
+	/**
+	 * Run an order-note comment query with the export's own visibility rules.
+	 *
+	 * Swaps two clauses for the duration of the query: WooCommerce's
+	 * `exclude_order_comments` comes off, and system notes are excluded in SQL.
+	 * System notes are dropped from the payload anyway, so fetching them only
+	 * builds WP_Comment objects to throw away.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param array $args Arguments for get_comments().
+	 * @return array|null Comment objects, or null when the query failed.
+	 */
+	private static function fetch_order_notes( array $args ): ?array {
+		global $wpdb;
+
+		$authors = self::system_note_authors();
+
+		$exclude_system_notes = static function ( $clauses ) use ( $wpdb, $authors ) {
+			$template = self::system_author_exclusion_sql( "{$wpdb->comments}.comment_author", $authors );
+
+			// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared,WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $template is a caller-built column reference plus %s placeholders the sniff cannot see; the author values bind right here.
+			$clauses['where'] .= ' AND ' . $wpdb->prepare( $template, ...$authors );
+
+			return $clauses;
+		};
+
+		// Capture whether WooCommerce's exclusion was actually attached, so a
+		// context that deliberately removed it does not get it re-added below.
+		$had_wc_exclusion = remove_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10 );
+		add_filter( 'comments_clauses', $exclude_system_notes );
+
+		// A leftover last_error from an earlier, unrelated query must not read
+		// as this fetch failing when get_comments() is served from cache. A
+		// failure can only be this fetch's own if a query actually ran (wpdb
+		// clears last_error at the start of each query), so gate on the query
+		// count instead of $wpdb->flush(), which would also wipe last_result
+		// and friends for the whole request.
+		$queries_before = $wpdb->num_queries;
+
+		try {
+			$notes = get_comments( $args );
+		} finally {
+			// Restore even when a third-party comment-query callback throws, or
+			// the swap leaks into every later comment query in the request.
+			remove_filter( 'comments_clauses', $exclude_system_notes );
+			if ( $had_wc_exclusion ) {
+				add_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10, 1 );
 			}
 		}
 
+		// get_comments() returns an empty array for a failed query and for a
+		// target that genuinely has no matching notes; $wpdb->last_error is the
+		// only signal separating the two. The oracle is a heuristic and can miss
+		// in one direction: a hooked callback running its own successful query
+		// after the failed one clears last_error, and the failure then reads as
+		// a genuine empty. The reverse (a callback's failing side query flagging
+		// a good fetch) only costs a skipped cache write and a retry, not data.
+		if ( $wpdb->num_queries > $queries_before && '' !== $wpdb->last_error ) {
+			$target = isset( $args['post_id'] )
+				? 'order ' . (int) $args['post_id']
+				: count( (array) ( $args['post__in'] ?? array() ) ) . ' order(s)';
+			Logger::error( sprintf( 'Order note query failed for %s: %s', $target, $wpdb->last_error ) );
+
+			// WP_Comment_Query caches its ID list unconditionally, so the failed
+			// query just cached an empty result under the current last-changed
+			// salt. Bump the salt or every retry is served that poisoned empty,
+			// indistinguishable from a genuine no-notes order.
+			//
+			// Every failure bumps, not just the first of a request. Bumping
+			// once would leave a second failing query with identical args
+			// reading the first failure's cached empty: no query runs, so the
+			// num_queries gate above sees nothing, and the failure is
+			// reclassified as a genuine no-notes order. The salt is site-wide
+			// across every comment consumer, so a page of over-limit orders
+			// against a persistently broken query does bump repeatedly; that
+			// cost is accepted because the alternative silently exports empty.
+			wp_cache_set_last_changed( 'comment' );
+
+			return null;
+		}
+
+		return (array) $notes;
+	}
+
+	/**
+	 * The empty grouped-notes structure every note path starts from.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @return array{private: string[], customer: string[]}
+	 */
+	private static function empty_note_groups(): array {
+		return array(
+			'private'  => array(),
+			'customer' => array(),
+		);
+	}
+
+	/**
+	 * Comment authors WooCommerce writes on its own system notes.
+	 *
+	 * WC stores the author as the translatable __( 'WooCommerce', 'woocommerce' )
+	 * (WC_Order::add_order_note()) and compares against the translated string
+	 * when classifying notes (wc_get_order_notes()), so on a translated locale
+	 * the stored author is the translation, not the literal. Both are excluded
+	 * so the plugin and core agree on what a system note is; undetected system
+	 * notes would consume cap slots and can evict every merchant note.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @return string[] One or two author strings, literal first.
+	 */
+	private static function system_note_authors(): array {
+		$authors = array( self::SYSTEM_NOTE_AUTHOR );
+
+		// phpcs:ignore WordPress.WP.I18n.TextDomainMismatch -- deliberately WC core's domain: this reads the exact translation WooCommerce stamps on its own system notes.
+		$translated = __( 'WooCommerce', 'woocommerce' );
+		if ( self::SYSTEM_NOTE_AUTHOR !== $translated ) {
+			$authors[] = $translated;
+		}
+
+		return $authors;
+	}
+
+	/**
+	 * Placeholder SQL template excluding system notes, byte-exact on the author.
+	 *
+	 * CAST AS BINARY keeps the comparison byte-exact, matching the strict
+	 * in_array() in export_note_content(); the column collation would otherwise
+	 * also drop authors differing only in case or trailing spaces. One builder
+	 * for the live fetch's clause filter and the raw count query, so the two
+	 * comparisons cannot drift apart.
+	 *
+	 * The template is unprepared on purpose: the caller passes the same
+	 * $authors array through its own prepare(), so no prepared fragment is ever
+	 * re-scanned by a second prepare().
+	 *
+	 * The authors are a parameter rather than a second system_note_authors()
+	 * call so the placeholder count and the bound values cannot disagree: one
+	 * array sizes the template and supplies the arguments. Deriving them
+	 * separately would leave prepare() to fail on a count mismatch, and a
+	 * failed prepare() returns an empty string, degrading the WHERE fragment
+	 * into malformed SQL.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param string   $column  Comment-author column reference, caller-built
+	 *                          from wpdb table names, never from input.
+	 * @param string[] $authors System authors, from system_note_authors(); the
+	 *                          same array must be bound by the caller.
+	 * @return string SQL fragment with one %s per system author.
+	 */
+	private static function system_author_exclusion_sql( string $column, array $authors ): string {
+		$placeholders = implode( ',', array_fill( 0, count( $authors ), '%s' ) );
+
+		return "CAST({$column} AS BINARY) NOT IN ({$placeholders})";
+	}
+
+	/**
+	 * Decode one note's exportable content, or null for a system note.
+	 *
+	 * System notes are already excluded in SQL; a third-party clause could put
+	 * them back, so the byte-exact author guard runs here too.
+	 *
+	 * The authors are a parameter because this runs once per note: resolving
+	 * them here would put a __() call and its two filter dispatches on the
+	 * per-note path, thousands of times on a full page. Callers resolve once
+	 * per loop.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param object   $note    Comment object.
+	 * @param string[] $authors System authors, from system_note_authors().
+	 * @return string|null Decoded content, or null when the note is not exported.
+	 */
+	private static function export_note_content( object $note, array $authors ): ?string {
+		if ( in_array( $note->comment_author, $authors, true ) ) {
+			return null;
+		}
+
+		return html_entity_decode( $note->comment_content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	}
+
+	/**
+	 * Split order-note comments into the customer-visible and private groups.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param array $notes Comment objects for a single order.
+	 * @return array{private: string[], customer: string[]}
+	 */
+	private static function group_order_notes( array $notes ): array {
+		$order_notes = self::empty_note_groups();
+		$authors     = self::system_note_authors();
+
+		foreach ( $notes as $note ) {
+			$content = self::export_note_content( $note, $authors );
+			if ( null === $content ) {
+				continue;
+			}
+
+			$note_type                   = (bool) get_comment_meta( $note->comment_ID, 'is_customer_note', true ) ? 'customer' : 'private';
+			$order_notes[ $note_type ][] = $content;
+		}
+
 		return $order_notes;
+	}
+
+	/**
+	 * Fetch an over-limit order's notes with the bound applied per visibility group.
+	 *
+	 * One bounded query per group, selected in SQL on the `is_customer_note`
+	 * meta, so each group keeps its own newest notes. A single newest-N query
+	 * cannot do that: whichever group dominates the newest N evicts the other.
+	 * The group is known from the query itself, so no note needs a meta read.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param int $order_id Order ID.
+	 * @param int $limit    Maximum notes per group.
+	 * @return array{private: string[]|null, customer: string[]|null} Grouped
+	 *                     note contents; a group is null when its own query
+	 *                     failed, so the caller can degrade just that group.
+	 */
+	private static function fetch_order_notes_by_group( int $order_id, int $limit ): array {
+		$grouped = self::empty_note_groups();
+
+		foreach ( array_keys( $grouped ) as $group ) {
+			$notes = self::fetch_group_notes( array( 'post_id' => $order_id ), $group, $limit );
+
+			$grouped[ $group ] = ( null === $notes ) ? null : self::collect_note_contents( $notes );
+		}
+
+		return $grouped;
+	}
+
+	/**
+	 * Run one bounded order-note query narrowed to a single visibility group.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param array  $target Target clause: array( 'post_id' => $id ) or array( 'post__in' => $ids ).
+	 * @param string $group  'private' or 'customer'.
+	 * @param int    $number Maximum rows to fetch.
+	 * @return array|null Comment objects, or null when the query failed.
+	 */
+	private static function fetch_group_notes( array $target, string $group, int $number ): ?array {
+		$args               = self::order_note_query_args( $target, $number );
+		$args['meta_query'] = self::group_meta_query( $group ); // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- bounded query, keyed meta, no alternative for per-group selection.
+
+		return self::fetch_order_notes( $args );
+	}
+
+	/**
+	 * Reduce comment objects to their exportable contents, in query order.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param array $notes Comment objects.
+	 * @return string[] Decoded contents, system notes dropped.
+	 */
+	private static function collect_note_contents( array $notes ): array {
+		$contents = array();
+		$authors  = self::system_note_authors();
+
+		foreach ( $notes as $note ) {
+			$content = self::export_note_content( $note, $authors );
+			if ( null !== $content ) {
+				$contents[] = $content;
+			}
+		}
+
+		return $contents;
+	}
+
+	/**
+	 * Meta query selecting one visibility group of order notes.
+	 *
+	 * Follows group_order_notes(): a note is customer-visible when its
+	 * `is_customer_note` meta is truthy, private when the meta is absent or
+	 * falsy ('' or '0'). The match is exact for the values WooCommerce
+	 * writes; shapes it never produces can diverge, such as a
+	 * whitespace-padded value under a PAD SPACE collation, or duplicate meta
+	 * rows, where SQL matches any row but PHP reads a single one.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param string $group 'private' or 'customer'.
+	 * @return array Meta query clauses.
+	 */
+	private static function group_meta_query( string $group ): array {
+		if ( 'customer' === $group ) {
+			return array(
+				array(
+					'key'     => 'is_customer_note',
+					'value'   => array( '', '0' ),
+					'compare' => 'NOT IN',
+				),
+			);
+		}
+
+		return array(
+			'relation' => 'OR',
+			array(
+				'key'     => 'is_customer_note',
+				'compare' => 'NOT EXISTS',
+			),
+			array(
+				'key'     => 'is_customer_note',
+				'value'   => array( '', '0' ),
+				'compare' => 'IN',
+			),
+		);
 	}
 
 	/**
@@ -944,12 +1428,19 @@ class Order_Util {
 	 *
 	 * WordPress's `get_comments()` result cache is keyed by a hash of its arguments,
 	 * so a per-order call cannot be served from a batch query's cache. This method
-	 * instead bulk-fetches every order note for the batch in a single `get_comments()`,
-	 * primes `wp_commentmeta` for all returned comments with one `update_meta_cache()`,
-	 * and stores the resolved `{ private, customer }` arrays in a class-level map that
-	 * `get_order_notes()` consults before falling back to the per-order path.
+	 * instead bulk-fetches the at-or-under-limit orders' notes in chunks whose
+	 * counted notes fit the batch budget, primes `wp_commentmeta` per chunk with
+	 * one `update_meta_cache()`, and stores the resolved `{ private, customer }`
+	 * arrays in a class-level map that `get_order_notes()` consults before
+	 * falling back to the per-order path.
+	 *
+	 * Each order is bounded on its own: an aggregate counts the notes per order
+	 * first, and over-limit orders are routed per visibility group (see
+	 * prime_over_limit_orders()) so one order cannot consume the whole batch's
+	 * fetch window and neither group starves the other (SHIPSTN-161).
 	 *
 	 * @since 5.0.4
+	 * @since 5.3.2 Bounded per order.
 	 *
 	 * @param int[] $order_ids Order IDs to prime.
 	 * @return void
@@ -961,11 +1452,13 @@ class Order_Util {
 
 		$order_ids = array_values( array_unique( array_map( 'absint', $order_ids ) ) );
 
-		$to_prime = array_filter(
-			$order_ids,
-			static function ( $id ) {
-				return ! isset( self::$order_notes_cache[ $id ] );
-			}
+		$to_prime = array_values(
+			array_filter(
+				$order_ids,
+				static function ( $id ) {
+					return ! isset( self::$order_notes_cache[ $id ] );
+				}
+			)
 		);
 		if ( empty( $to_prime ) ) {
 			return;
@@ -974,21 +1467,219 @@ class Order_Util {
 		// Seed every order with an empty structure so orders with no notes still
 		// short-circuit the per-order query path below.
 		foreach ( $to_prime as $id ) {
-			self::$order_notes_cache[ $id ] = array(
-				'private'  => array(),
-				'customer' => array(),
-			);
+			self::$order_notes_cache[ $id ] = self::empty_note_groups();
 		}
 
-		remove_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10 );
-		$notes = get_comments(
-			array(
-				'post__in' => $to_prime,
-				'approve'  => 'approve',
-				'type'     => 'order_note',
+		$limit = self::get_order_notes_limit();
+
+		// One aggregate count serves both routing decisions: the per-group
+		// split is a strict superset of the plain total, so counting per group
+		// up front spares the over-limit path a second scan of the same rows.
+		$group_counts = self::count_order_notes_by_group( $to_prime );
+		if ( null === $group_counts ) {
+			// A failed count must not leave the batch cached as noteless. Unseed
+			// so get_order_notes() retries each order instead.
+			self::unseed_order_notes_cache( $to_prime );
+			return;
+		}
+
+		// Orders absent from the count keep the empty structure seeded above.
+		$bulk = array();
+		$over = array();
+		foreach ( $group_counts as $id => $groups ) {
+			$total = $groups['private'] + $groups['customer'];
+
+			if ( $total > $limit ) {
+				$over[ $id ] = $groups;
+			} else {
+				$bulk[ $id ] = $total;
+			}
+		}
+
+		if ( ! empty( $over ) ) {
+			self::prime_over_limit_orders( $over, $limit );
+		}
+
+		if ( empty( $bulk ) ) {
+			return;
+		}
+
+		// Each chunk's counted notes stay under MAX_BATCH_NOTES, so the fetch
+		// and the meta prime below hold a bounded number of rows at a time no
+		// matter the page size or the filtered limit.
+		foreach ( self::chunk_by_note_count( $bulk ) as $chunk ) {
+			self::prime_bulk_chunk( $chunk, $limit );
+		}
+	}
+
+	/**
+	 * Prime the notes of orders whose total count exceeds the per-order limit.
+	 *
+	 * On the store population this bound targets, most of a page can be over
+	 * the limit, and a per-order refetch (two meta-joined queries each) would
+	 * trade the memory failure for a request-time one. Instead the orders are
+	 * counted per visibility group and each group is routed on its own:
+	 *
+	 * - A group at or under the limit is complete inside a shared window, so
+	 *   it shares one bounded `post__in` query with other orders. The window
+	 *   is the chunk's exact group-count sum: it covers every row of every
+	 *   order's group, so a neighbour's newer notes cannot clip an order.
+	 * - A group over the limit needs its own newest-N query; only that group
+	 *   pays the per-order cost. Measured slope: two queries per over-limit
+	 *   group per order, so a page where every order's private group is
+	 *   bloated still pays one to two queries per order. That residue is
+	 *   close to inherent (newest-N-per-order cannot be batched without
+	 *   window functions); healthy pages stay flat regardless of page size.
+	 * - An empty group issues no query at all.
+	 *
+	 * Failures unseed the affected orders (logged at the fetch), so
+	 * get_order_notes() can retry them instead of exporting empty notes.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param array<int, array{private: int, customer: int}> $group_counts Per-group
+	 *                   note counts keyed by over-limit order ID, already seeded.
+	 * @param int                                            $limit Per-group note limit.
+	 * @return void
+	 */
+	private static function prime_over_limit_orders( array $group_counts, int $limit ): void {
+		$order_ids = array_keys( $group_counts );
+
+		$results = array_fill_keys( $order_ids, self::empty_note_groups() );
+		$authors = self::system_note_authors();
+
+		foreach ( array( 'private', 'customer' ) as $group ) {
+			$bulkable = array();
+
+			foreach ( $order_ids as $id ) {
+				if ( ! isset( $results[ $id ] ) ) {
+					continue; // Dropped by an earlier group's failed query.
+				}
+
+				$count = $group_counts[ $id ][ $group ] ?? 0;
+
+				if ( 0 === $count ) {
+					continue;
+				}
+
+				if ( $count <= $limit ) {
+					$bulkable[ $id ] = $count;
+					continue;
+				}
+
+				$notes = self::fetch_group_notes( array( 'post_id' => $id ), $group, $limit );
+
+				if ( null === $notes ) {
+					self::unseed_order_notes_cache( array( $id ) );
+					unset( $results[ $id ] );
+					continue;
+				}
+
+				$results[ $id ][ $group ] = self::collect_note_contents( $notes );
+			}
+
+			foreach ( self::chunk_by_note_count( $bulkable ) as $chunk_ids ) {
+				$window = 0;
+				foreach ( $chunk_ids as $id ) {
+					$window += $bulkable[ $id ];
+				}
+
+				$notes = self::fetch_group_notes(
+					array( 'post__in' => $chunk_ids ),
+					$group,
+					min( $window, self::MAX_BATCH_NOTES )
+				);
+
+				if ( null === $notes ) {
+					self::unseed_order_notes_cache( $chunk_ids );
+					foreach ( $chunk_ids as $id ) {
+						unset( $results[ $id ] );
+					}
+					continue;
+				}
+
+				foreach ( $notes as $note ) {
+					$content = self::export_note_content( $note, $authors );
+					if ( null !== $content && isset( $results[ (int) $note->comment_post_ID ] ) ) {
+						$results[ (int) $note->comment_post_ID ][ $group ][] = $content;
+					}
+				}
+			}
+		}
+
+		foreach ( $results as $id => $grouped ) {
+			self::$order_notes_cache[ $id ] = $grouped;
+		}
+	}
+
+	/**
+	 * Split a counted batch into chunks whose note totals fit the batch budget.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param array<int, int> $counts Note count keyed by order ID; every count
+	 *                                is at most MAX_ORDER_NOTES_LIMIT, so any
+	 *                                single order fits a chunk.
+	 * @return int[][] Lists of order IDs.
+	 */
+	private static function chunk_by_note_count( array $counts ): array {
+		$chunks  = array();
+		$current = array();
+		$sum     = 0;
+
+		foreach ( $counts as $order_id => $total ) {
+			if ( ! empty( $current ) && ( $sum + $total ) > self::MAX_BATCH_NOTES ) {
+				$chunks[] = $current;
+				$current  = array();
+				$sum      = 0;
+			}
+
+			$current[] = $order_id;
+			$sum      += $total;
+		}
+
+		if ( ! empty( $current ) ) {
+			$chunks[] = $current;
+		}
+
+		return $chunks;
+	}
+
+	/**
+	 * Fetch and cache the notes for one chunk of at-or-under-limit orders.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param int[] $order_ids Order IDs whose counted notes fit the batch budget.
+	 * @param int   $limit     Per-order note limit.
+	 * @return void
+	 */
+	private static function prime_bulk_chunk( array $order_ids, int $limit ): void {
+		// The number is not reached in practice, since every order here counted
+		// at or under the limit. Backstop against the count and the query
+		// disagreeing, so this can never be unbounded again; the batch budget
+		// caps it in absolute terms.
+		$notes = self::fetch_order_notes(
+			self::order_note_query_args(
+				array( 'post__in' => $order_ids ),
+				min( $limit * count( $order_ids ), self::MAX_BATCH_NOTES )
 			)
 		);
-		add_filter( 'comments_clauses', array( 'WC_Comments', 'exclude_order_comments' ), 10, 1 );
+
+		// Unseed on failure only, so nothing exports empty notes for orders that
+		// have them. An empty result with no DB error is genuine (a third-party
+		// clause may narrow every order out) and the empty seeds stand.
+		if ( null === $notes ) {
+			Logger::error(
+				sprintf(
+					'prime_order_notes_for_batch bulk fetch failed for %d order(s) (%s).',
+					count( $order_ids ),
+					implode( ',', array_slice( $order_ids, 0, 20 ) )
+				)
+			);
+			self::unseed_order_notes_cache( $order_ids );
+			return;
+		}
 
 		if ( empty( $notes ) ) {
 			return;
@@ -998,20 +1689,144 @@ class Order_Util {
 			static function ( $note ) {
 				return (int) $note->comment_ID;
 			},
-			(array) $notes
+			$notes
 		);
 		update_meta_cache( 'comment', $comment_ids );
 
-		foreach ( (array) $notes as $note ) {
-			if ( 'WooCommerce' === $note->comment_author ) {
-				continue;
-			}
-			$order_id = (int) $note->comment_post_ID;
+		// The meta cache above makes the per-note meta reads in
+		// group_order_notes() free.
+		$notes_by_order = array();
+		foreach ( $notes as $note ) {
+			$notes_by_order[ (int) $note->comment_post_ID ][] = $note;
+		}
+
+		foreach ( $notes_by_order as $order_id => $order_notes ) {
 			if ( ! isset( self::$order_notes_cache[ $order_id ] ) ) {
 				continue;
 			}
-			$bucket = get_comment_meta( $note->comment_ID, 'is_customer_note', true ) ? 'customer' : 'private';
-			self::$order_notes_cache[ $order_id ][ $bucket ][] = html_entity_decode( $note->comment_content, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+			self::$order_notes_cache[ $order_id ] = self::group_order_notes( $order_notes );
+		}
+	}
+
+	/**
+	 * Count each order's exportable notes per visibility group.
+	 *
+	 * Mirrors the WHERE that `get_comments()` builds above. Note that
+	 * `'approve' => 'approve'` is not a `WP_Comment_Query` argument (`approve`
+	 * is a value of `status`), so the live query leaves `status` at its default
+	 * and matches held notes too. This count does the same so the two agree.
+	 *
+	 * The mirror is of the default clauses only: this count is raw SQL, so it
+	 * bypasses the comment-query filter chain (`comments_clauses`,
+	 * `pre_get_comments`) that the live fetch runs. A plugin narrowing
+	 * order-note visibility desynchronises the two on every request, not just
+	 * under a race. It only routes orders between bounded paths, so a
+	 * disagreement cannot make the fetch unbounded: the bulk query carries its
+	 * own ceiling. A stale-low or filter-skewed count can still let that
+	 * ceiling clip a neighbouring order's notes for the one request.
+	 *
+	 * The group split mirrors group_meta_query(): a note is customer-visible
+	 * when a truthy `is_customer_note` meta row exists, private otherwise. The
+	 * meta table joins once per note on the keyed row and both counts are
+	 * DISTINCT over comment IDs, so a note carrying duplicate meta rows is
+	 * still counted once (as customer when any row is truthy) while both fetch
+	 * arms match it; that degenerate shape can undersize a shared window by
+	 * the duplicate, nothing more.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param int[] $order_ids Order IDs, already sanitised to integers.
+	 * @return array<int, array{private: int, customer: int}>|null Counts keyed
+	 *                       by order ID, omitting orders with no notes. Null
+	 *                       when the query failed.
+	 */
+	private static function count_order_notes_by_group( array $order_ids ): ?array {
+		if ( empty( $order_ids ) ) {
+			return array();
+		}
+
+		global $wpdb;
+
+		$placeholders     = implode( ',', array_fill( 0, count( $order_ids ), '%d' ) );
+		$authors          = self::system_note_authors();
+		$author_exclusion = self::system_author_exclusion_sql( "{$wpdb->comments}.comment_author", $authors );
+
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- the sniff cannot see that $placeholders and $author_exclusion are implode()-built lists of %d / %s tokens consumed by prepare(); every live value still goes through prepare().
+		// phpcs:disable WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- false positives: the sniff cannot count the spread against the interpolated placeholder lists, nor see the %d / %s tokens inside them. The suppression also silences real mismatches here, so recount by hand when editing this SQL.
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT {$wpdb->comments}.comment_post_ID AS order_id,
+					COUNT( DISTINCT {$wpdb->comments}.comment_ID ) AS total,
+					COUNT( DISTINCT CASE WHEN {$wpdb->commentmeta}.meta_value NOT IN ( '', '0' )
+						THEN {$wpdb->comments}.comment_ID END ) AS customer_total
+				FROM {$wpdb->comments}
+				LEFT JOIN {$wpdb->commentmeta}
+					ON {$wpdb->commentmeta}.comment_id = {$wpdb->comments}.comment_ID
+					AND {$wpdb->commentmeta}.meta_key = 'is_customer_note'
+				WHERE {$wpdb->comments}.comment_type = 'order_note'
+					AND {$wpdb->comments}.comment_approved IN ( '0', '1' )
+					AND {$author_exclusion}
+					AND {$wpdb->comments}.comment_post_ID IN ({$placeholders})
+				GROUP BY {$wpdb->comments}.comment_post_ID",
+				...array_merge( $authors, $order_ids )
+			)
+		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
+
+		if ( null === $rows || '' !== $wpdb->last_error ) {
+			Logger::error(
+				sprintf(
+					'count_order_notes_by_group failed for %d order(s) (%s): %s',
+					count( $order_ids ),
+					implode( ',', array_slice( $order_ids, 0, 20 ) ),
+					$wpdb->last_error
+				)
+			);
+			return null;
+		}
+
+		$counts = array();
+		foreach ( (array) $rows as $row ) {
+			$customer = (int) $row->customer_total;
+
+			$counts[ (int) $row->order_id ] = array(
+				'private'  => (int) $row->total - $customer,
+				'customer' => $customer,
+			);
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Flush the pre-fetched order-notes cache.
+	 *
+	 * The cache is scoped to one export page by design. Both export surfaces
+	 * flush after each page's payload pass (the REST controller in a finally,
+	 * so a throwing payload cannot skip it; the XML export after its page is
+	 * built); long-lived processes (WP-CLI, Action Scheduler) exporting many
+	 * pages would otherwise grow the map without bound. Tests use it to reset
+	 * state between cases.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @return void
+	 */
+	public static function flush_order_notes_cache(): void {
+		self::$order_notes_cache = array();
+	}
+
+	/**
+	 * Drop cache entries so get_order_notes() can query those orders itself.
+	 *
+	 * @since 5.3.2
+	 *
+	 * @param int[] $order_ids Order IDs to unseed.
+	 * @return void
+	 */
+	private static function unseed_order_notes_cache( array $order_ids ): void {
+		foreach ( $order_ids as $id ) {
+			unset( self::$order_notes_cache[ $id ] );
 		}
 	}
 
@@ -1073,5 +1888,72 @@ class Order_Util {
 		} catch ( \Exception $e ) {
 			return false;
 		}
+	}
+
+	/**
+	 * Whether a ShipStation shipment has already been recorded on an order.
+	 *
+	 * Backs the shipnotify idempotency guard (SHIPSTN-53) so ShipStation's
+	 * hourly retries do not re-add the tracking note or re-increment the
+	 * shipped-item counter. An empty key disables dedup (the caller has no
+	 * stable identifier for this shipment).
+	 *
+	 * @since 5.3.1
+	 *
+	 * @param WC_Order $order Order to check.
+	 * @param string   $key   Stable shipment identifier (REST: notification_id; XML: "tracking|carrier").
+	 * @return bool True when the key is non-empty and already recorded.
+	 */
+	public static function shipment_already_processed( WC_Order $order, string $key ): bool {
+		if ( '' === $key ) {
+			return false;
+		}
+
+		$processed = $order->get_meta( '_shipstation_processed_shipments', true );
+		if ( ! is_array( $processed ) ) {
+			return false;
+		}
+
+		return in_array( $key, $processed, true );
+	}
+
+	/**
+	 * Record a ShipStation shipment identifier on an order.
+	 *
+	 * Later retries carrying the same key are then recognized as duplicates by
+	 * self::shipment_already_processed(). No-op on an empty key or a key that is
+	 * already recorded. (SHIPSTN-53)
+	 *
+	 * @since 5.3.1
+	 *
+	 * @param WC_Order $order Order to update.
+	 * @param string   $key   Stable shipment identifier.
+	 * @return void
+	 */
+	public static function mark_shipment_processed( WC_Order $order, string $key ): void {
+		if ( '' === $key ) {
+			return;
+		}
+
+		$processed = $order->get_meta( '_shipstation_processed_shipments', true );
+		if ( ! is_array( $processed ) ) {
+			$processed = array();
+		}
+
+		if ( in_array( $key, $processed, true ) ) {
+			return;
+		}
+
+		$processed[] = $key;
+
+		// Orders carry a handful of shipments in practice. The cap only stops a
+		// misbehaving retry loop from growing the serialized meta row without
+		// limit; the oldest identifiers are dropped first.
+		if ( count( $processed ) > self::MAX_PROCESSED_SHIPMENTS ) {
+			$processed = array_slice( $processed, -self::MAX_PROCESSED_SHIPMENTS );
+		}
+
+		$order->update_meta_data( '_shipstation_processed_shipments', $processed );
+		$order->save_meta_data();
 	}
 }

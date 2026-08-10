@@ -7,7 +7,7 @@ WC tested up to: 11.0
 WC requires at least: 10.8
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.1
+Stable tag: 5.3.2
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -74,9 +74,13 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 
 == Changelog ==
 
+= 5.3.2 - 2026-08-10 =
+* Fix   - Bound the order notes fetched per order during export, so a large note history can no longer exhaust PHP memory. Exports now send each order's most recent notes, up to 50 internal and 50 customer notes per order, instead of loading every note on the page.
+
 = 5.3.1 - 2026-07-27 =
 * Fix   - Stop duplicate "exported to Shipstation" order notes on stores with a persistent object cache and HPOS.
 * Tweak - WooCommerce 11.0 Compatibility.
+* Fix   - Prevent duplicate shipment tracking notes and an inflated shipped-item count when ShipStation retries a shipment notification for the same order. Note that the woocommerce_shipstation_shipnotify_send_tracking_note filter no longer runs on a duplicate retry.
 
 = 5.3.0 - 2026-07-15 =
 * Add   - Checkout Rates: merchants can now enable ShipStation live shipping rates at checkout from the ShipStation integration settings; defaults to off and requires ShipStation provisioning before it can be activated.

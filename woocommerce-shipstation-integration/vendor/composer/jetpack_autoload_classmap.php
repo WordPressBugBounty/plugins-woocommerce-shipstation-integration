@@ -358,6 +358,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/bootstrap.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Notes_Flush_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Notes_Flush_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Option_Encoding_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Option_Encoding_Test.php'
@@ -365,6 +369,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Shipnotify_Idempotency_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Shipnotify_Idempotency_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Assembled_Bundle_Export_Test' => array(
 		'version' => 'dev-trunk',
@@ -537,6 +545,14 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Mark_Orders_Exported_Bulk_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Mark_Orders_Exported_Bulk_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Order_Notes_Limit_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Order_Notes_Limit_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Shipment_Processed_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Shipment_Processed_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\REST_API_Loader_Test' => array(
 		'version' => 'dev-trunk',

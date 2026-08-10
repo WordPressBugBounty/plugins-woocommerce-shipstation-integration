@@ -498,34 +498,46 @@ class Orders_Controller extends API_Controller {
 		}
 
 		$orders_by_id = $this->get_orders_by_ids( $ids_to_fetch );
-		$this->prime_batch_caches( $ids_to_fetch );
-		Order_Util::prime_products_for_batch( $orders_by_id );
 
 		$orders_to_mark = array();
-		foreach ( $ids_to_fetch as $order_id ) {
-			/**
-			 * Allow third party to change the order object.
-			 *
-			 * @param WC_Order $order Order object.
-			 *
-			 * @since 4.1.42
-			 */
-			$order = apply_filters(
-				'woocommerce_shipstation_export_get_order',
-				$orders_by_id[ $order_id ] ?? false
-			);
 
-			if ( ! Order_Util::is_wc_order( $order ) ) {
-				/* translators: 1: order id */
-				$this->log( sprintf( __( 'Order %s can not be found.', 'woocommerce-shipstation-integration' ), $order_id ) );
-				continue;
+		try {
+			// Inside the try: the notes prime seeds the map for every ID before
+			// it queries, and its queries run third-party comment-clause
+			// callbacks that can throw, which would leave the map populated.
+			$this->prime_batch_caches( $ids_to_fetch );
+			Order_Util::prime_products_for_batch( $orders_by_id );
+
+			foreach ( $ids_to_fetch as $order_id ) {
+				/**
+				 * Allow third party to change the order object.
+				 *
+				 * @param WC_Order $order Order object.
+				 *
+				 * @since 4.1.42
+				 */
+				$order = apply_filters(
+					'woocommerce_shipstation_export_get_order',
+					$orders_by_id[ $order_id ] ?? false
+				);
+
+				if ( ! Order_Util::is_wc_order( $order ) ) {
+					/* translators: 1: order id */
+					$this->log( sprintf( __( 'Order %s can not be found.', 'woocommerce-shipstation-integration' ), $order_id ) );
+					continue;
+				}
+
+				$sales_orders_data['sales_orders'][] = $this->get_order_data( $order );
+				$orders_to_mark[]                    = $order;
 			}
 
-			$sales_orders_data['sales_orders'][] = $this->get_order_data( $order );
-			$orders_to_mark[]                    = $order;
+			Order_Util::mark_orders_exported_bulk( $orders_to_mark );
+		} finally {
+			// The page's payload pass is over; keep the notes map from
+			// accumulating across pages in long-lived processes, even when
+			// building one order's payload throws.
+			Order_Util::flush_order_notes_cache();
 		}
-
-		Order_Util::mark_orders_exported_bulk( $orders_to_mark );
 
 		return new WP_REST_Response( $sales_orders_data, 200 );
 	}
@@ -545,61 +557,72 @@ class Orders_Controller extends API_Controller {
 	 */
 	private function get_orders_by_id_param( array $requested_ids ): WP_REST_Response {
 		$orders_by_id = $this->get_orders_by_ids( $requested_ids, array( 'status' => 'any' ) );
-		$this->prime_batch_caches( array_keys( $orders_by_id ) );
-		Order_Util::prime_products_for_batch( $orders_by_id );
 
 		$sales_orders   = array();
 		$orders_to_mark = array();
 
-		foreach ( $requested_ids as $order_id ) {
-			$order_id = (int) $order_id;
+		try {
+			// Inside the try: the notes prime seeds the map for every ID before
+			// it queries, and its queries run third-party comment-clause
+			// callbacks that can throw, which would leave the map populated.
+			$this->prime_batch_caches( array_keys( $orders_by_id ) );
+			Order_Util::prime_products_for_batch( $orders_by_id );
 
-			/**
-			 * Allow third party to skip the export of certain order ID.
-			 *
-			 * @param boolean $flag     Flag to skip the export.
-			 * @param int     $order_id Order ID.
-			 *
-			 * @since 4.1.42
-			 */
-			if ( ! apply_filters( 'woocommerce_shipstation_export_order', true, $order_id ) ) {
-				continue;
-			}
+			foreach ( $requested_ids as $order_id ) {
+				$order_id = (int) $order_id;
 
-			if ( ! isset( $orders_by_id[ $order_id ] ) ) {
-				Logger::warning(
-					sprintf(
-						/* translators: %d: WC order ID requested via order_ids[] that was not found. */
-						__( 'order_ids fetch: order %d not found.', 'woocommerce-shipstation-integration' ),
-						$order_id
-					)
+				/**
+				 * Allow third party to skip the export of certain order ID.
+				 *
+				 * @param boolean $flag     Flag to skip the export.
+				 * @param int     $order_id Order ID.
+				 *
+				 * @since 4.1.42
+				 */
+				if ( ! apply_filters( 'woocommerce_shipstation_export_order', true, $order_id ) ) {
+					continue;
+				}
+
+				if ( ! isset( $orders_by_id[ $order_id ] ) ) {
+					Logger::warning(
+						sprintf(
+							/* translators: %d: WC order ID requested via order_ids[] that was not found. */
+							__( 'order_ids fetch: order %d not found.', 'woocommerce-shipstation-integration' ),
+							$order_id
+						)
+					);
+					continue;
+				}
+
+				/**
+				 * Allow third party to change the order object.
+				 *
+				 * @param WC_Order $order Order object.
+				 *
+				 * @since 4.1.42
+				 */
+				$order = apply_filters(
+					'woocommerce_shipstation_export_get_order',
+					$orders_by_id[ $order_id ]
 				);
-				continue;
+
+				if ( ! Order_Util::is_wc_order( $order ) ) {
+					/* translators: 1: order id */
+					$this->log( sprintf( __( 'Order %s can not be found.', 'woocommerce-shipstation-integration' ), $order_id ) );
+					continue;
+				}
+
+				$sales_orders[]   = $this->get_order_data( $order );
+				$orders_to_mark[] = $order;
 			}
 
-			/**
-			 * Allow third party to change the order object.
-			 *
-			 * @param WC_Order $order Order object.
-			 *
-			 * @since 4.1.42
-			 */
-			$order = apply_filters(
-				'woocommerce_shipstation_export_get_order',
-				$orders_by_id[ $order_id ]
-			);
-
-			if ( ! Order_Util::is_wc_order( $order ) ) {
-				/* translators: 1: order id */
-				$this->log( sprintf( __( 'Order %s can not be found.', 'woocommerce-shipstation-integration' ), $order_id ) );
-				continue;
-			}
-
-			$sales_orders[]   = $this->get_order_data( $order );
-			$orders_to_mark[] = $order;
+			Order_Util::mark_orders_exported_bulk( $orders_to_mark );
+		} finally {
+			// The page's payload pass is over; keep the notes map from
+			// accumulating across pages in long-lived processes, even when
+			// building one order's payload throws.
+			Order_Util::flush_order_notes_cache();
 		}
-
-		Order_Util::mark_orders_exported_bulk( $orders_to_mark );
 
 		$count = count( $sales_orders );
 
@@ -1952,6 +1975,31 @@ class Orders_Controller extends API_Controller {
 		$tracking_url       = ! empty( $notification['tracking_url'] ) ? wc_clean( wp_unslash( $notification['tracking_url'] ) ) : '';
 		$carrier            = ! empty( $notification['carrier_code'] ) ? wc_clean( wp_unslash( $notification['carrier_code'] ) ) : '';
 
+		// Idempotency key so ShipStation's hourly retries (SHIPSTN-53) do not
+		// re-add the note or re-increment the shipped counter. notification_id is
+		// unique per shipment and is expected to be present (update_orders_shipments
+		// skips notifications with an empty notification_id); the guard keeps dedup
+		// a no-op if it ever is not.
+		//
+		// The read here and the mark after the note are not atomic, so two
+		// concurrent retries can both pass. Accepted: ShipStation retries hourly,
+		// and closing the window needs row locking. Do not move the mark ahead of
+		// add_order_note() -- a failure between the two must re-add the note
+		// rather than silently drop a legitimate one.
+		$shipment_key          = ! empty( $notification['notification_id'] ) ? (string) wc_clean( wp_unslash( (string) $notification['notification_id'] ) ) : '';
+		$shipment_is_duplicate = Order_Util::shipment_already_processed( $order, $shipment_key );
+
+		if ( $shipment_is_duplicate ) {
+			$this->log(
+				sprintf(
+					/* translators: 1) notification ID 2) order ID */
+					__( 'Notification ID: %1$s was already recorded on order %2$s. Skipping the tracking note, the Shipment Tracking write and the shipped-item count.', 'woocommerce-shipstation-integration' ),
+					$shipment_key,
+					$order->get_id()
+				)
+			);
+		}
+
 		foreach ( $items as $item ) {
 			$item_sku    = wc_clean( (string) $item['sku'] );
 			$item_name   = wc_clean( (string) $item['description'] );
@@ -2003,8 +2051,10 @@ class Orders_Controller extends API_Controller {
 				)
 			);
 
-			$order->update_meta_data( '_shipstation_shipped_item_count', $current_shipped_items + $shipped_item_count );
-			$order->save_meta_data();
+			if ( ! $shipment_is_duplicate ) {
+				$order->update_meta_data( '_shipstation_shipped_item_count', $current_shipped_items + $shipped_item_count );
+				$order->save_meta_data();
+			}
 		} else {
 			// If we don't have items from SS and order items in WC.
 			$order_shipped = 0 === $total_item_count;
@@ -2024,7 +2074,15 @@ class Orders_Controller extends API_Controller {
 		$current_status = 'wc-' . $order->get_status();
 
 		// Tracking information - WC Shipment Tracking extension.
-		if ( class_exists( 'WC_Shipment_Tracking' ) ) {
+		// A tracking note is customer-facing only when the Shipment Tracking
+		// extension is not active (it renders tracking itself) and the order is
+		// entering the shipped status.
+		$has_shipment_tracking = class_exists( 'WC_Shipment_Tracking' );
+		$is_customer_note      = $has_shipment_tracking ? false : WC_ShipStation_Integration::$shipped_status !== $current_status;
+
+		// Record the tracking number with the Shipment Tracking extension. Skipped
+		// on a duplicate ShipStation retry so the same shipment is not stored twice.
+		if ( $has_shipment_tracking && ! $shipment_is_duplicate ) {
 			if ( function_exists( 'wc_st_add_tracking_number' ) ) {
 				wc_st_add_tracking_number( $order->get_id(), $tracking_number, strtolower( $carrier ), $timestamp );
 			} else {
@@ -2034,10 +2092,6 @@ class Orders_Controller extends API_Controller {
 				$order->save_meta_data();
 				$this->log( __( 'You\'re using Shipment Tracking < 1.4.0. Please update!', 'woocommerce-shipstation-integration' ) );
 			}
-
-			$is_customer_note = false;
-		} else {
-			$is_customer_note = WC_ShipStation_Integration::$shipped_status !== $current_status;
 		}
 
 		$tracking_data = array(
@@ -2064,26 +2118,30 @@ class Orders_Controller extends API_Controller {
 			$tracking_data
 		);
 
-		$order->add_order_note(
-			$order_note,
-			/**
-			* Allow to override should tracking note be sent to customer.
-			*
-			* @param bool     $is_customer_note
-			* @param string   $order_note
-			* @param WC_Order $order
-			* @param array    $tracking_data
-			*
-			* @since 4.5.0
-			*/
-			apply_filters(
-				'woocommerce_shipstation_shipnotify_send_tracking_note',
-				$is_customer_note,
+		if ( ! $shipment_is_duplicate ) {
+			$order->add_order_note(
 				$order_note,
-				$order,
-				$tracking_data
-			)
-		);
+				/**
+				* Allow to override should tracking note be sent to customer.
+				*
+				* @param bool     $is_customer_note
+				* @param string   $order_note
+				* @param WC_Order $order
+				* @param array    $tracking_data
+				*
+				* @since 4.5.0
+				*/
+				apply_filters(
+					'woocommerce_shipstation_shipnotify_send_tracking_note',
+					$is_customer_note,
+					$order_note,
+					$order,
+					$tracking_data
+				)
+			);
+
+			Order_Util::mark_shipment_processed( $order, $shipment_key );
+		}
 
 		/**
 		 * Trigger action for other integrations.

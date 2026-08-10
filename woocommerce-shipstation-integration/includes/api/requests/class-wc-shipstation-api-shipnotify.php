@@ -167,6 +167,32 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 			exit;
 		}
 
+		// Idempotency key for this shipment so ShipStation's hourly retries
+		// (SHIPSTN-53) do not re-add the note or re-increment the shipped counter.
+		// The XML API carries no notification_id, so key on tracking number +
+		// carrier; an empty tracking number disables dedup (rare label-less case).
+		// The carrier is lower-cased so a retry that varies only in casing
+		// ("UPS" then "ups") still resolves to the same key.
+		//
+		// The read here and the mark after the note are not atomic, so two
+		// concurrent retries can both pass. Accepted: ShipStation retries hourly,
+		// and closing the window needs row locking. Do not move the mark ahead of
+		// add_order_note() -- a failure between the two must re-add the note
+		// rather than silently drop a legitimate one.
+		$shipment_key          = '' !== $tracking_number ? $tracking_number . '|' . strtolower( $carrier ) : '';
+		$shipment_is_duplicate = Order_Util::shipment_already_processed( $order, $shipment_key );
+
+		if ( $shipment_is_duplicate ) {
+			$this->log(
+				sprintf(
+					/* translators: 1) shipment key 2) order ID */
+					__( 'Shipment %1$s was already recorded on order %2$s. Skipping the tracking note, the Shipment Tracking write and the shipped-item count.', 'woocommerce-shipstation-integration' ),
+					$shipment_key,
+					$order_id
+				)
+			);
+		}
+
 		// Maybe parse items from posted XML (if exists).
 		if ( $can_parse_xml && isset( $xml->Items ) ) {
 			$items = $xml->Items;
@@ -226,8 +252,10 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 				)
 			);
 
-			$order->update_meta_data( '_shipstation_shipped_item_count', $current_shipped_items + $shipped_item_count );
-			$order->save_meta_data();
+			if ( ! $shipment_is_duplicate ) {
+				$order->update_meta_data( '_shipstation_shipped_item_count', $current_shipped_items + $shipped_item_count );
+				$order->save_meta_data();
+			}
 		} else {
 			// If we don't have items from SS and order items in WC, or cannot parse
 			// the XML, just complete the order as a whole.
@@ -248,7 +276,15 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		$current_status = 'wc-' . $order->get_status();
 
 		// Tracking information - WC Shipment Tracking extension.
-		if ( class_exists( 'WC_Shipment_Tracking' ) ) {
+		// A tracking note is customer-facing only when the Shipment Tracking
+		// extension is not active (it renders tracking itself) and the order is
+		// entering the shipped status.
+		$has_shipment_tracking = class_exists( 'WC_Shipment_Tracking' );
+		$is_customer_note      = $has_shipment_tracking ? false : WC_ShipStation_Integration::$shipped_status !== $current_status;
+
+		// Record the tracking number with the Shipment Tracking extension. Skipped
+		// on a duplicate ShipStation retry so the same shipment is not stored twice.
+		if ( $has_shipment_tracking && ! $shipment_is_duplicate ) {
 			if ( function_exists( 'wc_st_add_tracking_number' ) ) {
 				wc_st_add_tracking_number( $order_id, $tracking_number, strtolower( $carrier ), $timestamp );
 			} else {
@@ -258,10 +294,6 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 				$order->update_meta_data( '_date_shipped', $timestamp );
 				$order->save_meta_data();
 			}
-
-			$is_customer_note = false;
-		} else {
-			$is_customer_note = WC_ShipStation_Integration::$shipped_status !== $current_status;
 		}
 
 		$tracking_data = array(
@@ -287,26 +319,30 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 			$tracking_data
 		);
 
-		$order->add_order_note(
-			$order_note,
-			/**
-			* Allow to override should tracking note be sent to customer.
-			*
-			* @param bool $is_customer_note
-			* @param string $order_note
-			* @param WC_Order $order
-			* @param array $tracking_data
-			*
-			* @since 4.5.0
-			*/
-			apply_filters(
-				'woocommerce_shipstation_shipnotify_send_tracking_note',
-				$is_customer_note,
+		if ( ! $shipment_is_duplicate ) {
+			$order->add_order_note(
 				$order_note,
-				$order,
-				$tracking_data
-			)
-		);
+				/**
+				* Allow to override should tracking note be sent to customer.
+				*
+				* @param bool $is_customer_note
+				* @param string $order_note
+				* @param WC_Order $order
+				* @param array $tracking_data
+				*
+				* @since 4.5.0
+				*/
+				apply_filters(
+					'woocommerce_shipstation_shipnotify_send_tracking_note',
+					$is_customer_note,
+					$order_note,
+					$order,
+					$tracking_data
+				)
+			);
+
+			Order_Util::mark_shipment_processed( $order, $shipment_key );
+		}
 
 		/**
 		 * Trigger action for other integrations.
