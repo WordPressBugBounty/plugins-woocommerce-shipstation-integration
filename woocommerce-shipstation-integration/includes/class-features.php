@@ -86,6 +86,32 @@ final class Features {
 	}
 
 	/**
+	 * Whether TLS was terminated before the request reached this origin: the store
+	 * is served over HTTPS but this request arrived at PHP as plain HTTP, which is
+	 * what a proxy such as Cloudflare "Flexible" looks like from here.
+	 *
+	 * WooCommerce accepts Basic Auth REST key credentials only over HTTPS, and
+	 * ShipStation sends Basic Auth, so such a store returns 401 for every
+	 * ShipStation request whatever the credentials (SHIPSTN-166).
+	 *
+	 * Neither input can be spoofed by another request: is_ssl() reflects only the
+	 * connection PHP received, home_url() reads the `home` option. Never
+	 * X-Forwarded-Proto or CF-Visitor, which any client can send. site_url() is
+	 * unusable here because it rewrites its scheme to http while is_ssl() is false.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @return bool
+	 */
+	public static function is_ssl_terminated_upstream(): bool {
+		if ( is_ssl() ) {
+			return false;
+		}
+
+		return wp_is_home_url_using_https();
+	}
+
+	/**
 	 * Whether the WPCOM-brokered transport is enabled. Default off.
 	 *
 	 * Enabled via any of three additive sources, checked in this order:

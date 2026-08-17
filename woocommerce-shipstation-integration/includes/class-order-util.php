@@ -1954,6 +1954,401 @@ class Order_Util {
 		}
 
 		$order->update_meta_data( '_shipstation_processed_shipments', $processed );
-		$order->save_meta_data();
+
+		// save_meta_data() fires added_order_meta / updated_order_meta, and on
+		// the order data store woocommerce_update_order, so the marker write is
+		// itself a handoff to foreign code and needs the same containment as
+		// the rest of the tail (SHIPSTN-165).
+		$saved = self::dispatch_safely(
+			sprintf( 'the processed-shipment marker write for order %d', $order->get_id() ),
+			static function () use ( $order ) {
+				$order->save_meta_data();
+			}
+		);
+
+		if ( ! $saved ) {
+			self::discard_pending_meta_safely( $order );
+		}
+	}
+
+	/**
+	 * Record a tracking number with the Shipment Tracking extension, containing
+	 * any failure, with an order-meta fallback when the write did not land.
+	 *
+	 * The writer hands control to the Shipment Tracking extension and
+	 * everything hooked into its write, so it runs contained (SHIPSTN-165).
+	 * When the writer is unavailable (Shipment Tracking older than 1.4.0) or
+	 * threw and was contained, the tracking number falls back to the
+	 * _tracking_provider / _tracking_number / _date_shipped order meta: the
+	 * shipment is marked processed either way, so without the fallback the
+	 * number would be lost for good. The fallback save fires foreign-hookable
+	 * meta hooks of its own, so it runs contained as well; when even that
+	 * fails, the containment log entries are what remains of the number.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @param WC_Order      $order           Order the shipment belongs to.
+	 * @param string        $tracking_number Tracking number.
+	 * @param string        $carrier         Carrier name; stored lower-case.
+	 * @param int           $timestamp       Shipped date as a Unix timestamp.
+	 * @param callable|null $writer          Tracking writer, receiving order ID,
+	 *                                       tracking number, lower-cased carrier
+	 *                                       and timestamp. Defaults to
+	 *                                       wc_st_add_tracking_number() when the
+	 *                                       extension exposes it; overridable so
+	 *                                       tests can drive the fallback paths.
+	 * @return bool True when the extension write landed, false when the meta
+	 *              fallback ran (whether or not it succeeded).
+	 */
+	public static function store_tracking_number_safely( WC_Order $order, string $tracking_number, string $carrier, int $timestamp, ?callable $writer = null ): bool {
+		$order_id = $order->get_id();
+
+		if ( null === $writer && function_exists( 'wc_st_add_tracking_number' ) ) {
+			$writer = 'wc_st_add_tracking_number';
+		}
+
+		if ( null !== $writer ) {
+			$stored = self::dispatch_safely(
+				sprintf( 'the Shipment Tracking write for order %d', $order_id ),
+				static function () use ( $writer, $order_id, $tracking_number, $carrier, $timestamp ) {
+					$writer( $order_id, $tracking_number, strtolower( $carrier ), $timestamp );
+				}
+			);
+
+			if ( $stored ) {
+				return true;
+			}
+		}
+
+		$fell_back = self::dispatch_safely(
+			sprintf( 'the tracking-meta fallback for order %d', $order_id ),
+			static function () use ( $order, $tracking_number, $carrier, $timestamp ) {
+				$order->update_meta_data( '_tracking_provider', strtolower( $carrier ) );
+				$order->update_meta_data( '_tracking_number', $tracking_number );
+				$order->update_meta_data( '_date_shipped', $timestamp );
+				$order->save_meta_data();
+			}
+		);
+
+		if ( ! $fell_back ) {
+			self::discard_pending_meta_safely( $order );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Add an order note, containing any failure in the tail that follows it.
+	 *
+	 * WC_Order::add_order_note() writes the comment row first, then hands control
+	 * to everyone else: woocommerce_new_customer_note, where WooCommerce renders
+	 * and sends the customer-note email, and woocommerce_order_note_added, which
+	 * fires for private notes too. A fatal anywhere in there used to turn an
+	 * already-recorded shipment into a 500 (SHIPSTN-165).
+	 *
+	 * The note ID is captured from wp_insert_comment as well as taken from the
+	 * return value: the row lands before the tail runs, and the return value is
+	 * unreachable when the tail throws. Callers do not consume the ID today; it
+	 * exists so the log entry and the return contract can report the note that
+	 * actually landed.
+	 *
+	 * Memory exhaustion in the tail is an E_ERROR and is not catchable here.
+	 * Main::maybe_defer_shipment_emails() is what covers that.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @param WC_Order $order            Order to annotate.
+	 * @param mixed    $note             Note content, normally a string. Untyped on
+	 *                                   purpose: it arrives from the public
+	 *                                   woocommerce_shipstation_shipnotify_tracking_note
+	 *                                   filter, and a type hint would fatal at the call
+	 *                                   site, outside this method's own containment.
+	 * @param bool     $is_customer_note Whether the note is customer-facing.
+	 * @return int Comment ID, or 0 when no note was written.
+	 */
+	public static function add_order_note_safely( WC_Order $order, $note, bool $is_customer_note ): int {
+		$order_id = $order->get_id();
+		$note_id  = 0;
+		$caught   = false;
+
+		$capture = static function ( $comment_id, $comment ) use ( &$note_id, $order_id ) {
+			if ( 0 !== $note_id || ! is_object( $comment ) ) {
+				return;
+			}
+
+			if ( 'order_note' !== $comment->comment_type || (int) $comment->comment_post_ID !== $order_id ) {
+				return;
+			}
+
+			$note_id = (int) $comment_id;
+		};
+
+		// Lowest reachable priority so the ID is recorded before any callback
+		// that might throw on the same hook.
+		add_action( 'wp_insert_comment', $capture, PHP_INT_MIN, 2 );
+
+		try {
+			$returned = (int) $order->add_order_note( $note, $is_customer_note );
+
+			if ( $returned > 0 ) {
+				$note_id = $returned;
+			}
+		} catch ( \Throwable $e ) {
+			$caught = true;
+
+			// \Throwable, not \Exception: the reported crashes are Error and
+			// TypeError, which \Exception would not catch.
+			self::log_safely(
+				sprintf(
+					/* translators: 1) order ID 2) throwable class 3) throwable message 4) file path 5) line number */
+					__( 'A callback on the order note for order %1$d failed: %2$s: %3$s in %4$s:%5$d.', 'woocommerce-shipstation-integration' ),
+					$order_id,
+					get_class( $e ),
+					self::throwable_message( $e ),
+					$e->getFile(),
+					$e->getLine()
+				) . ' ' . (
+					$note_id > 0
+						? __( 'The note was written and the request was not aborted.', 'woocommerce-shipstation-integration' )
+						: __( 'The note was not written and the request was not aborted.', 'woocommerce-shipstation-integration' )
+				)
+			);
+		} finally {
+			remove_action( 'wp_insert_comment', $capture, PHP_INT_MIN );
+		}
+
+		// add_order_note() can also fail without throwing (a failed comment
+		// insert, a filter blanking the content). The shipment is recorded and
+		// marked processed regardless, so without a log line the missing note
+		// would leave no trace at all.
+		if ( 0 === $note_id && ! $caught ) {
+			self::log_safely(
+				/* translators: %d: order ID */
+				sprintf( __( 'No tracking note was recorded for order %d: add_order_note() reported no comment ID.', 'woocommerce-shipstation-integration' ), $order_id ),
+				'warning'
+			);
+		}
+
+		return $note_id;
+	}
+
+	/**
+	 * Move an order to a new status, containing any failure in the tail.
+	 *
+	 * The transition sends the shipped-status emails and runs every callback
+	 * attached to them, so it needs the same containment as the note
+	 * (SHIPSTN-165).
+	 *
+	 * Whether it landed cannot be read from the call. WC_Order::save() writes the
+	 * row and only then runs status_transition(), whose try/catch misses Error --
+	 * so an Error from a transition callback escapes after the order is saved,
+	 * while an Exception thrown before the write is swallowed and returns false.
+	 * The woocommerce_after_order_object_save capture is a fast path, but it can
+	 * be skipped without anything visible here (the hook fires after save_items(),
+	 * so a throw from woocommerce_update_order lands in between), so the answer
+	 * of record is a re-read of the persisted status.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @param WC_Order    $order      Order to transition.
+	 * @param string|null $new_status Target status, with or without the wc- prefix. Untyped
+	 *                                for the same reason as $note above: callers pass
+	 *                                WC_ShipStation_Integration::$shipped_status, which is
+	 *                                null until plugins_loaded populates it.
+	 * @return bool True when the order reached the new status.
+	 */
+	public static function transition_order_status_safely( WC_Order $order, $new_status ): bool {
+		$order_id = $order->get_id();
+		$target   = OrderUtil::remove_status_prefix( (string) $new_status );
+		$landed   = false;
+
+		// An empty target can only mean the integration statics are not
+		// populated yet (null before plugins_loaded). WooCommerce would not
+		// fail on it: update_status() coerces an unknown status to the default
+		// and reports success, silently moving the order to pending.
+		if ( '' === $target ) {
+			return false;
+		}
+
+		$capture = static function ( $saved ) use ( &$landed, $order_id, $target ) {
+			if ( ! $saved instanceof WC_Order || $saved->get_id() !== $order_id ) {
+				return;
+			}
+
+			if ( OrderUtil::remove_status_prefix( (string) $saved->get_status() ) === $target ) {
+				$landed = true;
+			}
+		};
+
+		// The capture misses a throw raised between the row write and the hook
+		// -- woocommerce_update_order fires from inside the data store's
+		// update() -- and update_status()'s return value cannot stand in for
+		// it, because save() swallows an Exception raised before the write and
+		// still reports success. Re-reading the persisted status is the only
+		// answer that holds in both directions.
+		$persisted = static function () use ( $order_id, $target ): bool {
+			$fresh = wc_get_order( $order_id );
+
+			return $fresh instanceof WC_Order
+				&& OrderUtil::remove_status_prefix( (string) $fresh->get_status() ) === $target;
+		};
+
+		// Lowest reachable priority so the write is recorded before any callback
+		// on the same hook can throw.
+		add_action( 'woocommerce_after_order_object_save', $capture, PHP_INT_MIN );
+
+		try {
+			$order->update_status( $new_status );
+		} catch ( \Throwable $e ) {
+			$landed = $landed || $persisted();
+
+			self::log_safely(
+				sprintf(
+					/* translators: 1) order ID 2) throwable class 3) throwable message 4) file path 5) line number */
+					__( 'A callback on the status transition for order %1$d failed: %2$s: %3$s in %4$s:%5$d.', 'woocommerce-shipstation-integration' ),
+					$order_id,
+					get_class( $e ),
+					self::throwable_message( $e ),
+					$e->getFile(),
+					$e->getLine()
+				) . ' ' . (
+					$landed
+						/* translators: %s: order status */
+						? sprintf( __( 'The order reached %s.', 'woocommerce-shipstation-integration' ), $new_status )
+						/* translators: %s: order status */
+						: sprintf( __( 'The order did not reach %s.', 'woocommerce-shipstation-integration' ), $new_status )
+				)
+			);
+		} finally {
+			remove_action( 'woocommerce_after_order_object_save', $capture, PHP_INT_MIN );
+		}
+
+		// The healthy path needs the same authoritative read: the capture can
+		// be skipped without anything throwing.
+		return $landed || $persisted();
+	}
+
+	/**
+	 * Log from inside a containment path without letting the logging throw.
+	 *
+	 * Logger::error() runs apply_filters( 'woocommerce_logger_log_message' )
+	 * plus every registered log handler - more foreign code - so the catch
+	 * blocks that must not throw route through this instead.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @param string $message Message to log.
+	 * @param string $level   'error' or 'warning'.
+	 * @return void
+	 */
+	private static function log_safely( string $message, string $level = 'error' ): void {
+		try {
+			if ( 'warning' === $level ) {
+				Logger::warning( $message );
+			} else {
+				Logger::error( $message );
+			}
+		} catch ( \Throwable $e ) {
+			// The logging pipeline itself failed; there is nothing safer left
+			// to report through.
+			unset( $e );
+		}
+	}
+
+	/**
+	 * A contained throwable's message, bounded for logging.
+	 *
+	 * A foreign exception can carry an arbitrarily large payload in its
+	 * message (a dumped request body, a DSN with credentials). 500 characters
+	 * keeps the entry useful without letting the log become the dump; the
+	 * class and file:line logged alongside stay intact.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @param \Throwable $e Contained throwable.
+	 * @return string
+	 */
+	private static function throwable_message( \Throwable $e ): string {
+		$message = (string) $e->getMessage();
+
+		// Character-based, not byte-based: a byte cut can split a UTF-8
+		// sequence mid-character on its way into a utf8mb4 log column.
+		return mb_strlen( $message ) > 500 ? mb_substr( $message, 0, 500 ) . '...' : $message;
+	}
+
+	/**
+	 * Run a handoff to code outside this plugin, containing any failure.
+	 *
+	 * Used where the shipnotify flow gives control away: the Shipment Tracking
+	 * write, the plugin's own public actions, and its public filters (whose
+	 * callers keep the unfiltered value when a callback throws). Failures in
+	 * this plugin's own code are deliberately not routed through here -- those
+	 * should still surface (SHIPSTN-165).
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @param string   $context  Description of the handoff, used in the log entry.
+	 * @param callable $callback Handoff to run.
+	 * @return bool True when the callback completed, false when it threw.
+	 */
+	public static function dispatch_safely( string $context, callable $callback ): bool {
+		try {
+			$callback();
+
+			return true;
+		} catch ( \Throwable $e ) {
+			self::log_safely(
+				sprintf(
+					/* translators: 1) description of the contained handoff 2) throwable class 3) throwable message 4) file path 5) line number */
+					__( 'A failure in %1$s was contained: %2$s: %3$s in %4$s:%5$d.', 'woocommerce-shipstation-integration' ),
+					$context,
+					get_class( $e ),
+					self::throwable_message( $e ),
+					$e->getFile(),
+					$e->getLine()
+				)
+			);
+
+			return false;
+		}
+	}
+
+	/**
+	 * Drop an order's pending meta after a contained meta write failed.
+	 *
+	 * A throwable from the meta hooks leaves the change pending on the order
+	 * object: WC_Data::save_meta_data() never reaches the meta's
+	 * apply_changes(). The next save of that order then retries the same write
+	 * and throws again -- and on the posts-storage data store that retry is the
+	 * first statement of update(), ahead of the post row, so the shipped-status
+	 * transition is lost along with it. HPOS writes the order row first and
+	 * hides the problem.
+	 *
+	 * Re-reading discards the pending changes. The meta whose hooks threw was
+	 * already committed before they ran; anything later in the same batch is
+	 * dropped, which the retry would have thrown on again anyway.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @param WC_Order $order Order whose pending meta is dropped.
+	 * @return void
+	 */
+	public static function discard_pending_meta_safely( WC_Order $order ): void {
+		self::dispatch_safely(
+			sprintf( 'the meta reload after a failed write for order %d', $order->get_id() ),
+			static function () use ( $order ) {
+				$order->read_meta_data( true );
+			}
+		);
 	}
 }

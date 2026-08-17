@@ -370,6 +370,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Shipnotify_Hook_Fatal_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Shipnotify_Hook_Fatal_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Shipnotify_Idempotency_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Shipnotify_Idempotency_Test.php'
@@ -425,6 +429,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Update_Orders_Shipments_Empty_Items_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Update_Orders_Shipments_Empty_Items_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Update_Orders_Shipments_Hook_Fatal_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Update_Orders_Shipments_Hook_Fatal_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Update_Orders_Shipments_Test' => array(
 		'version' => 'dev-trunk',
@@ -518,17 +526,33 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Connection_Log_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Deferred_Shipment_Emails_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Deferred_Shipment_Emails_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Enum_Helper_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Enum_Helper_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Features_Ssl_Termination_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Features_Ssl_Termination_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Features_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Features_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Logger_Capture_Trait' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Logger_Capture_Trait.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Non_String_Const_Fixture' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Enum_Helper_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Containment_Gaps_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Containment_Gaps_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Get_Checkout_Rate_Code_Test' => array(
 		'version' => 'dev-trunk',
@@ -546,6 +570,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Mark_Orders_Exported_Bulk_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Note_Tail_Containment_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Note_Tail_Containment_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Order_Notes_Limit_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Order_Notes_Limit_Test.php'
@@ -557,6 +585,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\REST_API_Loader_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/REST_API_Loader_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Ssl_Proxy_Warning_Render_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Ssl_Proxy_Warning_Render_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Status_Mapping_Mode_UX_Test' => array(
 		'version' => 'dev-trunk',

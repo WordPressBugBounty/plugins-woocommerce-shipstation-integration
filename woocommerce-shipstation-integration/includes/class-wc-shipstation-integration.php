@@ -1199,6 +1199,17 @@ class WC_ShipStation_Integration extends WC_Integration {
 					</div>
 
 					<?php
+					// Leads the section: with TLS terminated upstream, every other
+					// status on this screen is a symptom of it (SHIPSTN-166).
+					if ( Features::is_ssl_terminated_upstream() ) {
+						wc_get_template(
+							'ssl-proxy-warning.php',
+							array(),
+							'',
+							WC_SHIPSTATION_ABSPATH . 'templates/'
+						);
+					}
+
 					if ( '' !== $verdict['banner'] ) {
 						$copy = self::connection_banner_copy( $verdict['banner'] );
 						// never_synced reads as info (just finish setup); every other

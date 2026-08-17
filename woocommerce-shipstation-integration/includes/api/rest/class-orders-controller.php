@@ -235,7 +235,10 @@ class Orders_Controller extends API_Controller {
 			)
 		);
 
-		// Register the endpoint for updating order shipment data.
+		// Register the endpoint for updating order shipment data. The full
+		// route is duplicated in Main::SHIPMENTS_ROUTE, which classifies the
+		// raw request before controllers load; moving this route means
+		// updating that constant too.
 		register_rest_route(
 			$this->namespace,
 			'/' . $this->rest_base . '/shipments',
@@ -2053,7 +2056,20 @@ class Orders_Controller extends API_Controller {
 
 			if ( ! $shipment_is_duplicate ) {
 				$order->update_meta_data( '_shipstation_shipped_item_count', $current_shipped_items + $shipped_item_count );
-				$order->save_meta_data();
+
+				// save_meta_data() fires added_order_meta / updated_order_meta
+				// and woocommerce_update_order, so the counter write is a
+				// handoff to foreign code like the marker write (SHIPSTN-165).
+				$counted = Order_Util::dispatch_safely(
+					sprintf( 'the shipped-item counter write for order %d', $order->get_id() ),
+					static function () use ( $order ) {
+						$order->save_meta_data();
+					}
+				);
+
+				if ( ! $counted ) {
+					Order_Util::discard_pending_meta_safely( $order );
+				}
 			}
 		} else {
 			// If we don't have items from SS and order items in WC.
@@ -2083,15 +2099,11 @@ class Orders_Controller extends API_Controller {
 		// Record the tracking number with the Shipment Tracking extension. Skipped
 		// on a duplicate ShipStation retry so the same shipment is not stored twice.
 		if ( $has_shipment_tracking && ! $shipment_is_duplicate ) {
-			if ( function_exists( 'wc_st_add_tracking_number' ) ) {
-				wc_st_add_tracking_number( $order->get_id(), $tracking_number, strtolower( $carrier ), $timestamp );
-			} else {
-				$order->update_meta_data( '_tracking_provider', strtolower( $carrier ) );
-				$order->update_meta_data( '_tracking_number', $tracking_number );
-				$order->update_meta_data( '_date_shipped', $timestamp );
-				$order->save_meta_data();
+			if ( ! function_exists( 'wc_st_add_tracking_number' ) ) {
 				$this->log( __( 'You\'re using Shipment Tracking < 1.4.0. Please update!', 'woocommerce-shipstation-integration' ) );
 			}
+
+			Order_Util::store_tracking_number_safely( $order, $tracking_number, $carrier, (int) $timestamp );
 		}
 
 		$tracking_data = array(
@@ -2102,98 +2114,144 @@ class Orders_Controller extends API_Controller {
 			'xml'             => '',
 		);
 
-		/**
-		* Allow to override tracking note.
-		*
-		* @param string   $order_note
-		* @param WC_Order $order
-		* @param array    $tracking_data
-		*
-		* @since 4.5.0
-		*/
-		$order_note = apply_filters(
-			'woocommerce_shipstation_shipnotify_tracking_note',
-			$order_note,
-			$order,
-			$tracking_data
-		);
-
-		if ( ! $shipment_is_duplicate ) {
-			$order->add_order_note(
-				$order_note,
+		// A filter callback is foreign code, so each shipnotify filter runs
+		// contained; a failure keeps the unfiltered value. An uncontained throw
+		// here would abort the request between the shipped-item counter above
+		// and the processed marker below, and the retry would re-apply the
+		// counter (SHIPSTN-165).
+		Order_Util::dispatch_safely(
+			sprintf( 'the woocommerce_shipstation_shipnotify_tracking_note filter for order %d', $order->get_id() ),
+			static function () use ( &$order_note, $order, $tracking_data ) {
 				/**
-				* Allow to override should tracking note be sent to customer.
-				*
-				* @param bool     $is_customer_note
-				* @param string   $order_note
-				* @param WC_Order $order
-				* @param array    $tracking_data
-				*
-				* @since 4.5.0
-				*/
-				apply_filters(
-					'woocommerce_shipstation_shipnotify_send_tracking_note',
-					$is_customer_note,
+				 * Allow to override tracking note.
+				 *
+				 * @param string   $order_note
+				 * @param WC_Order $order
+				 * @param array    $tracking_data
+				 *
+				 * @since 4.5.0
+				 */
+				$order_note = apply_filters(
+					'woocommerce_shipstation_shipnotify_tracking_note',
 					$order_note,
 					$order,
 					$tracking_data
-				)
+				);
+			}
+		);
+
+		if ( ! $shipment_is_duplicate ) {
+			$send_to_customer = $is_customer_note;
+
+			Order_Util::dispatch_safely(
+				sprintf( 'the woocommerce_shipstation_shipnotify_send_tracking_note filter for order %d', $order->get_id() ),
+				static function () use ( &$send_to_customer, $is_customer_note, $order_note, $order, $tracking_data ) {
+					/**
+					 * Allow to override should tracking note be sent to customer.
+					 *
+					 * @param bool     $is_customer_note
+					 * @param string   $order_note
+					 * @param WC_Order $order
+					 * @param array    $tracking_data
+					 *
+					 * @since 4.5.0
+					 */
+					$send_to_customer = apply_filters(
+						'woocommerce_shipstation_shipnotify_send_tracking_note',
+						$is_customer_note,
+						$order_note,
+						$order,
+						$tracking_data
+					);
+				}
 			);
 
+			// The note write is contained: everything WooCommerce runs after the
+			// comment row is committed -- the customer-note email and every
+			// third-party callback on it -- is code this plugin does not control,
+			// and a fatal there used to lose the shipment (SHIPSTN-165).
+			Order_Util::add_order_note_safely( $order, $order_note, (bool) $send_to_customer );
+
+			// Marked unconditionally, whatever became of the note. The shipped-item
+			// counter and the Shipment Tracking write above are not idempotent and
+			// have already landed, so a resend that is not recognised as a duplicate
+			// would count the same items twice and could complete a partially
+			// shipped order. Containment is what makes this safe: there is no
+			// longer an uncontained failure between those writes and this marker.
 			Order_Util::mark_shipment_processed( $order, $shipment_key );
 		}
 
-		/**
-		 * Trigger action for other integrations.
-		 *
-		 * @param WC_Order $order         Order object.
-		 * @param array    $tracking_data Tracking data.
-		 *
-		 * @since 4.0.1
-		 */
-		do_action(
-			'woocommerce_shipstation_shipnotify',
-			$order,
-			$tracking_data
+		Order_Util::dispatch_safely(
+			sprintf( 'the woocommerce_shipstation_shipnotify action for order %d', $order->get_id() ),
+			static function () use ( $order, $tracking_data ) {
+				/**
+				 * Trigger action for other integrations.
+				 *
+				 * @param WC_Order $order         Order object.
+				 * @param array    $tracking_data Tracking data.
+				 *
+				 * @since 4.0.1
+				 */
+				do_action(
+					'woocommerce_shipstation_shipnotify',
+					$order,
+					$tracking_data
+				);
+			}
 		);
 
-		// Update order status.
-		if (
-			/**
-			* Allow to override is order shipped flag.
-			*
-			* @param bool     $order_shipped
-			* @param WC_Order $order
-			* @param array    $tracking_data
-			*
-			* @since 4.5.0
-			*/
-			apply_filters(
-				'woocommerce_shipstation_shipnotify_order_shipped',
-				$order_shipped,
-				$order,
-				$tracking_data
-			)
-			&& WC_ShipStation_Integration::$shipped_status !== $current_status
-		) {
-			$order->update_status( WC_ShipStation_Integration::$shipped_status );
+		// Update order status. The shipped flag runs contained like the other
+		// filters: an uncontained throw here would 500 on this and every retry,
+		// since the shipment is already marked processed (SHIPSTN-165).
+		Order_Util::dispatch_safely(
+			sprintf( 'the woocommerce_shipstation_shipnotify_order_shipped filter for order %d', $order->get_id() ),
+			static function () use ( &$order_shipped, $order, $tracking_data ) {
+				/**
+				 * Allow to override is order shipped flag.
+				 *
+				 * @param bool     $order_shipped
+				 * @param WC_Order $order
+				 * @param array    $tracking_data
+				 *
+				 * @since 4.5.0
+				 */
+				$order_shipped = apply_filters(
+					'woocommerce_shipstation_shipnotify_order_shipped',
+					$order_shipped,
+					$order,
+					$tracking_data
+				);
+			}
+		);
 
-			/* translators: 1) order ID 2) shipment status */
-			$this->log( sprintf( __( 'Updated order %1$s to status %2$s', 'woocommerce-shipstation-integration' ), $order->get_id(), WC_ShipStation_Integration::$shipped_status ) );
+		if ( $order_shipped && WC_ShipStation_Integration::$shipped_status !== $current_status ) {
+			// The transition fires the completed-order email, which is the same
+			// unbounded tail as the customer-note email (SHIPSTN-165).
+			$transitioned = Order_Util::transition_order_status_safely( $order, WC_ShipStation_Integration::$shipped_status );
 
-			/**
-			 * Trigger action after the order status is changed for other integrations.
-			 *
-			 * @param WC_Order $order         Order object.
-			 * @param array    $tracking_data Tracking data.
-			 *
-			 * @since 4.5.2
-			 */
-			do_action(
-				'woocommerce_shipstation_shipnotify_status_updated',
-				$order,
-				$tracking_data
-			);
+			if ( $transitioned ) {
+				/* translators: 1) order ID 2) shipment status */
+				$this->log( sprintf( __( 'Updated order %1$s to status %2$s', 'woocommerce-shipstation-integration' ), $order->get_id(), WC_ShipStation_Integration::$shipped_status ) );
+
+				Order_Util::dispatch_safely(
+					sprintf( 'the woocommerce_shipstation_shipnotify_status_updated action for order %d', $order->get_id() ),
+					static function () use ( $order, $tracking_data ) {
+						/**
+						 * Trigger action after the order status is changed for other integrations.
+						 *
+						 * @param WC_Order $order         Order object.
+						 * @param array    $tracking_data Tracking data.
+						 *
+						 * @since 4.5.2
+						 */
+						do_action(
+							'woocommerce_shipstation_shipnotify_status_updated',
+							$order,
+							$tracking_data
+						);
+					}
+				);
+			}
 		}
 	}
 

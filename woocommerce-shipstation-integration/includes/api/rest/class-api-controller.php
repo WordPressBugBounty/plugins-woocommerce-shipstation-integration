@@ -86,6 +86,8 @@ class API_Controller {
 	 *
 	 * @since 5.0.5
 	 * @since 5.0.9 Strict gate scoped to proxied requests (relay header present).
+	 * @since 5.3.3 Success telemetry (connection rows, last_access, last-success)
+	 *              is written only after the capability layer allows the request.
 	 *
 	 * @param WP_REST_Request $request Current REST request.
 	 * @param string          $context wc_rest_check_manager_permissions context, e.g. 'attributes'.
@@ -119,14 +121,6 @@ class API_Controller {
 			)
 		);
 
-		if ( ! $is_proxied ) {
-			// Record every direct request for the key list's "Type" column and the
-			// connection log — independent of the transport toggle, since
-			// ShipStation connects directly with the REST keys whether or not the
-			// WordPress.com transport is enabled. Pure telemetry — WC core remains
-			// the auth authority on this path (SHIPSTN-132).
-			$this->record_direct_connection( $request );
-		}
 		if ( $is_proxied && ! Features::is_wpcom_transport_enabled() ) {
 			// Transport off: ShipStation is still reaching the WordPress.com proxy,
 			// but the store rejects it (the strict gate below does not run, so the
@@ -134,6 +128,7 @@ class API_Controller {
 			// shows the disabled, store-rejected route as live. Read-only telemetry.
 			$this->record_rejected_proxy_connection( $request );
 		}
+		$proxied_row = null;
 		if ( Features::is_wpcom_transport_enabled() && $is_proxied ) {
 			$row = $this->resolve_authenticated_api_key_row( $request );
 			if ( null === $row ) {
@@ -166,23 +161,7 @@ class API_Controller {
 				)
 			);
 
-			// Parity with WC_REST_Authentication, which stamps last_access on
-			// every direct authenticated request. WPCOM-set keys authenticate
-			// exclusively through this gate, so without the stamp the settings
-			// key list would report them as never used (SHIPSTN-142).
-			$this->update_api_key_last_access( (int) $row->key_id );
-
-			// Record the proxied connection (key list "Type" + connection log) and
-			// leave a diagnostic breadcrumb. Scoped to our own keys; telemetry only.
-			if ( Auth_Controller::is_plugin_secret( (string) $row->consumer_secret ) ) {
-				$proxy_url = $this->wpcom_proxy_url();
-				Connection_Log::record( (int) $row->key_id, (string) $row->truncated_key, 'wpcom', $proxy_url, home_url() );
-				$this->log_connection( 'wpcom', (int) $row->key_id, (string) $row->truncated_key, $proxy_url, $request );
-				// Latch a real, post-feature successful sync so the global broken-
-				// connection banner can tell "was working, now silent" from "never
-				// set up" (SHIPSTN-142). Proxied success — site A.
-				$this->stamp_last_success();
-			}
+			$proxied_row = $row;
 		}
 
 		/**
@@ -193,7 +172,29 @@ class API_Controller {
 		 *
 		 * @param bool $can_manage_wc Whether the user can manage WooCommerce.
 		 */
-		return apply_filters( 'wc_shipstation_user_can_manage_wc', wc_rest_check_manager_permissions( $context, $action ) );
+		$can_manage = apply_filters( 'wc_shipstation_user_can_manage_wc', wc_rest_check_manager_permissions( $context, $action ) );
+
+		if ( ! $is_proxied ) {
+			// Telemetry only; WC core stays the auth authority here (SHIPSTN-132).
+			// Records nothing unless the request was served as the key owner.
+			$this->record_direct_connection( $request, true === $can_manage );
+		} elseif ( true === $can_manage && null !== $proxied_row ) {
+			// Success telemetry runs only for served requests (SHIPSTN-166). The
+			// last_access stamp keeps parity with WC_REST_Authentication so keys
+			// that authenticate only through this gate read as used (SHIPSTN-142).
+			$this->update_api_key_last_access( (int) $proxied_row->key_id );
+
+			if ( Auth_Controller::is_plugin_secret( (string) $proxied_row->consumer_secret ) ) {
+				// Record the proxied connection (key list "Type" + connection log)
+				// and latch the broken-connection banner's success epoch (site A).
+				$proxy_url = $this->wpcom_proxy_url();
+				Connection_Log::record( (int) $proxied_row->key_id, (string) $proxied_row->truncated_key, 'wpcom', $proxy_url, home_url() );
+				$this->log_connection( 'wpcom', (int) $proxied_row->key_id, (string) $proxied_row->truncated_key, $proxy_url, $request );
+				$this->stamp_last_success();
+			}
+		}
+
+		return $can_manage;
 	}
 
 	/**
@@ -340,13 +341,19 @@ class API_Controller {
 	 * plugin-prefixed row is ignored. The connection log throttles repeat writes,
 	 * so a steadily polling store adds no per-request overhead beyond one lookup.
 	 *
+	 * Success telemetry only (SHIPSTN-166): records nothing unless the capability
+	 * layer served the request and it authenticated as the key's owner. A skipped
+	 * plugin-key request leaves a debug breadcrumb for support.
+	 *
 	 * @since 5.2.0
+	 * @since 5.3.3 Records only for served requests authenticated as the key owner.
 	 *
 	 * @param WP_REST_Request $request Current REST request.
+	 * @param bool            $served  Whether the capability layer allowed the request.
 	 *
 	 * @return void
 	 */
-	private function record_direct_connection( WP_REST_Request $request ): void {
+	private function record_direct_connection( WP_REST_Request $request, bool $served ): void {
 		$consumer_key = $this->read_direct_consumer_key( $request );
 		if ( '' === $consumer_key ) {
 			return;
@@ -361,16 +368,26 @@ class API_Controller {
 			return;
 		}
 
+		// Everything below records this route as live and working, so the request
+		// must have been served AND authenticated as this key's owner (WC core sets
+		// the current user upstream). Without this, a probe, or a store where
+		// is_ssl() is false so WC never checked the key, painted a green "Active"
+		// pill while every request returned 401 (SHIPSTN-166).
+		if ( ! $served || (int) $row->user_id <= 0 || get_current_user_id() !== (int) $row->user_id ) {
+			Logger::debug(
+				sprintf(
+					'ShipStation direct request with plugin key_id=%d was rejected or not authenticated as the key owner; connection not recorded. If the credentials are valid, check for TLS terminated upstream (is_ssl() false).',
+					(int) $row->key_id
+				)
+			);
+			return;
+		}
+
 		// Stamp last_access so the key list's "Last seen" / Active state tracks
 		// direct syncs. WC core's WC_REST_Authentication does not stamp it on every
 		// ShipStation request form, so without this a steadily-polling direct store
-		// shows a live connection-log row while the key itself reads stale. Gated on
-		// the request actually authenticating as this key's owner (WC core set the
-		// current user upstream), so a probe that merely presents a known consumer
-		// key — without the matching secret — cannot keep the key "Active".
-		if ( (int) $row->user_id > 0 && get_current_user_id() === (int) $row->user_id ) {
-			$this->update_api_key_last_access( (int) $row->key_id );
-		}
+		// shows a live connection-log row while the key itself reads stale.
+		$this->update_api_key_last_access( (int) $row->key_id );
 
 		$url = home_url();
 		// For direct, the Store URL ShipStation hits IS the site URL, so the

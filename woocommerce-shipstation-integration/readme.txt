@@ -7,7 +7,7 @@ WC tested up to: 11.0
 WC requires at least: 10.8
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.2
+Stable tag: 5.3.3
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,12 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.3 - 2026-08-17 =
+* Fix   - Stop another plugin's error on the order note, or on its customer email, from failing the whole shipment notification. The shipment is still recorded, and the error is written to the ShipStation log with the file and line that caused it. Note that woocommerce_shipstation_shipnotify_status_updated now fires only when the order actually reached the shipped status.
+* Fix   - Complete the order after a shipment notification even when another plugin's error interrupts a write to the order. On stores using the older post-based order storage this could previously leave the order in its old status, with the shipment recorded but never marked complete.
+* Tweak - On WooCommerce 10.8 and above, send the emails a shipment notification triggers in the background rather than during the request, so a slow or memory-heavy email template can no longer fail it. Use the new woocommerce_shipstation_defer_shipment_emails filter to send them inline again.
+* Fix   - Stop the connection list reporting a ShipStation route as Active while its requests were in fact being rejected. A connection is now recorded only once a request has authenticated.
 
 = 5.3.2 - 2026-08-10 =
 * Fix   - Bound the order notes fetched per order during export, so a large note history can no longer exhaust PHP memory. Exports now send each order's most recent notes, up to 50 internal and 50 customer notes per order, instead of loading every note on the page.

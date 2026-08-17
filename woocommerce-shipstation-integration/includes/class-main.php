@@ -25,6 +25,21 @@ use WC_Shipstation_API;
  */
 class Main {
 	/**
+	 * REST route that records a shipment, used to classify the request before
+	 * WordPress has routed it.
+	 *
+	 * Duplicates the route Orders_Controller::register_routes() registers: the
+	 * classification runs at init:9, before any controller exists to ask. If
+	 * the route moves there, it must move here too; a test pins the two
+	 * against the registered route table.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @var string
+	 */
+	private const SHIPMENTS_ROUTE = 'wc-shipstation/v1/orders/shipments';
+
+	/**
 	 * Instance to call certain functions globally within the plugin
 	 *
 	 * @var Main|null
@@ -95,6 +110,15 @@ class Main {
 		$this->load_files();
 		$this->maybe_init_wpcom_connection();
 
+		// Must land before init:10, where WooCommerce reads
+		// woocommerce_defer_transactional_emails once and wires the transactional
+		// email actions accordingly. Deferred to init:9 rather than run here:
+		// this is plugins_loaded:10, which is before themes and most plugins have
+		// registered anything, so the opt-out filter would be unreachable from
+		// the places merchants actually hook - including their own init
+		// callbacks, which init:9 leaves priorities 1-8 for (SHIPSTN-165).
+		add_action( 'init', array( __CLASS__, 'maybe_defer_shipment_emails' ), 9 );
+
 		// Create/upgrade the ShipStation connection-log table when needed
 		// (version-gated; a no-op once installed).
 		Connection_Log::maybe_install();
@@ -154,6 +178,160 @@ class Main {
 		// dropped on sites that enable the feature flag after this runs (e.g. a theme's
 		// functions.php); the callback no-ops for non-ShipStation rates.
 		Checkout_Rates_Classic_Label::register();
+	}
+
+	/**
+	 * Whether the current request is a ShipStation shipment notification write.
+	 *
+	 * Covers the legacy XML shipnotify endpoint and the REST
+	 * `POST /wc-shipstation/v1/orders/shipments` route, in every URL form each
+	 * one is served under.
+	 *
+	 * It reads the raw request because it has to answer before `init`, long
+	 * before `rest_api_init` has matched a route -- the same signal
+	 * `wc_is_rest_api_request()` uses. `$_GET` is preferred where available
+	 * because PHP has already decoded it and the URI has not.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @return bool
+	 */
+	public static function is_shipment_notification_request(): bool {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended --- Read-only request classification; both endpoints carry their own authentication.
+		$wc_api     = isset( $_GET['wc-api'] ) ? sanitize_text_field( wp_unslash( $_GET['wc-api'] ) ) : '';
+		$action     = isset( $_GET['action'] ) ? sanitize_text_field( wp_unslash( $_GET['action'] ) ) : '';
+		$rest_route = isset( $_GET['rest_route'] ) ? sanitize_text_field( wp_unslash( $_GET['rest_route'] ) ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		// Decoded before sanitizing: sanitize_text_field() strips percent-encoded
+		// octets outright, so decoding afterwards would find nothing left to
+		// decode and an encoded path could never match the route.
+		$uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_SERVER['REQUEST_URI'] ) ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized --- sanitize_text_field() wraps the whole expression; the sniff cannot see through the rawurldecode() between it and wp_unslash().
+
+		// Only the path may carry the route; a query string that merely mentions
+		// it (`?next=/wc-api/wc_shipstation`) must not classify.
+		$path = untrailingslashit( (string) wp_parse_url( $uri, PHP_URL_PATH ) );
+
+		// XML surface. WooCommerce serves both `?wc-api=wc_shipstation` and the
+		// `/wc-api/wc_shipstation/` rewrite, and only the first populates $_GET.
+		// Case-insensitive on both forms: WooCommerce's legacy API dispatcher
+		// lowercases the wc-api value before matching, so `WC_ShipStation` is
+		// served by the handler and must classify the same.
+		if ( 'shipnotify' === $action ) {
+			if ( 0 === strcasecmp( 'wc_shipstation', $wc_api ) ) {
+				return true;
+			}
+
+			// Anchored on the right only: the segment must end the path or be
+			// followed by `/`, so a sibling endpoint like
+			// `/wc-api/wc_shipstation_pro/` does not classify. The left stays
+			// open because a subdirectory install serves the endpoint at
+			// `/shop/wc-api/wc_shipstation/`.
+			if ( '' !== $path && 1 === preg_match( '#/wc-api/wc_shipstation(/|$)#i', $path ) ) {
+				return true;
+			}
+		}
+
+		// REST surface, POST only: the shipments route registers no other
+		// method. The method gate and the anchored matches below keep a request
+		// that merely mentions the route (a query string, a docs page path)
+		// from flipping its own email delivery to deferred.
+		$method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : '';
+		if ( 'POST' !== $method ) {
+			return false;
+		}
+
+		$route = '/' . self::SHIPMENTS_ROUTE;
+
+		// $_GET covers both `?rest_route=` forms, including the percent-encoded
+		// one a re-encoding proxy produces (PHP has already decoded it).
+		if ( '' !== $rest_route && untrailingslashit( '/' . ltrim( $rest_route, '/' ) ) === $route ) {
+			return true;
+		}
+
+		// Pretty-permalink form: the decoded path must end with the route.
+		return strlen( $path ) >= strlen( $route ) && substr( $path, -strlen( $route ) ) === $route;
+	}
+
+	/**
+	 * Keep the emails a shipment notification triggers out of the request.
+	 *
+	 * Recording a shipment writes a note and transitions the order, and
+	 * WooCommerce sends the customer-note and completed-order emails inline off
+	 * the back of that. Rendering an email is an unbounded amount of core and
+	 * third-party work -- template hooks, the bundled CSS inliner, the mail
+	 * transport -- and a fatal anywhere in it took the response down (SHIPSTN-165).
+	 *
+	 * The Order_Util helpers contain the failures that can be caught; this covers
+	 * the ones that cannot. Memory exhaustion in the CSS inliner is an E_ERROR,
+	 * so the only defence is to not render the email in this request at all.
+	 * WooCommerce's own deferral hands the mail to Action Scheduler, which sends
+	 * it moments later with per-email failure isolation, so nothing is lost.
+	 *
+	 * That last sentence is only true from WooCommerce 10.8, where
+	 * `DeferredEmailQueue` was introduced. Before it, the same filter built a
+	 * `WC_Background_Emailer`, and that object's constructors are the only thing
+	 * that register the queue's two drain handlers -- the
+	 * `wp_ajax_nopriv_wp_{blog_id}_wc_emailer` loopback worker and the
+	 * `wp_{blog_id}_wc_emailer_cron` healthcheck. Because the filter is turned on
+	 * for shipment notifications alone, the object exists only inside those
+	 * requests, and the loopback the queue posts to itself
+	 * (`admin-ajax.php?action=wp_{blog_id}_wc_emailer`) is not one of them. Nothing
+	 * would ever drain the queue: the mail would never be sent and a
+	 * `wp_{blog_id}_wc_emailer_batch_*` options row would leak per notification.
+	 * Silently dropping the customer's shipment email is worse than the 500 this
+	 * is fixing, so below 10.8 the deferral is skipped and delivery stays as it is
+	 * today -- the Order_Util containment still covers the note-hook and
+	 * email-render clusters there, leaving only the uncatchable OOM cluster,
+	 * which is the current behaviour on those versions anyway. The probe is the
+	 * mechanism itself rather than a version number, so it also fails closed onto
+	 * that same behaviour if WooCommerce ever moves the class.
+	 *
+	 * Two priorities matter here:
+	 *  - `init:9` -- late enough for themes and plugins to have registered, and
+	 *    for a merchant's own `init` callback at priorities 1-8 to reach the
+	 *    opt-out filter, while WooCommerce has not yet read its own filter at
+	 *    `init:10`.
+	 *  - `99` on the deferral itself, so an ordinary site-wide opt-out at the
+	 *    default priority does not quietly reinstate the inline render. That is
+	 *    precedence, not a guarantee: a callback at 100 or higher still wins,
+	 *    which is why the plugin ships its own opt-out filter.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.3
+	 *
+	 * @return void
+	 */
+	public static function maybe_defer_shipment_emails(): void {
+		if ( ! self::is_shipment_notification_request() ) {
+			return;
+		}
+
+		// Below WooCommerce 10.8 the filter routes to WC_Background_Emailer, whose
+		// queue nothing would drain outside this request -- see the docblock.
+		if ( ! class_exists( \Automattic\WooCommerce\Internal\Email\DeferredEmailQueue::class ) ) {
+			return;
+		}
+
+		/**
+		 * Filters whether the emails triggered by a ShipStation shipment
+		 * notification are deferred to Action Scheduler instead of sent inline.
+		 *
+		 * Return false to restore inline sending, at the cost of letting a fatal
+		 * in the email render fail the whole shipment notification.
+		 *
+		 * @since 5.3.3
+		 *
+		 * @param bool $defer Whether to defer. Default true.
+		 */
+		if ( ! apply_filters( 'woocommerce_shipstation_defer_shipment_emails', true ) ) {
+			return;
+		}
+
+		add_filter( 'woocommerce_defer_transactional_emails', '__return_true', 99 );
 	}
 
 	/**
@@ -247,7 +425,16 @@ class Main {
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-classic-label.php';
 
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-privacy.php';
-		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-api.php';
+
+		// Guarded because the test bootstrap declares a minimal WC_Shipstation_API
+		// stub (the full plugin is never loaded there), and including the real
+		// class over it is a fatal. No-op in production: nothing else declares it.
+		// The probe must not autoload: the Jetpack autoloader's manifest maps this
+		// symbol to tests/bootstrap.php (its generator scans autoload-dev paths
+		// even under --no-dev), and loading that file fatals every request.
+		if ( ! class_exists( 'WC_Shipstation_API', false ) ) {
+			include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-api.php';
+		}
 
 		// Load REST API loader class file.
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-rest-api-loader.php';
