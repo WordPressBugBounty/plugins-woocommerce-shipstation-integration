@@ -1,13 +1,13 @@
 === ShipStation for WooCommerce ===
 Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, dwainm, laurendavissmith001, Kloon
 Tags: shipping, woocommerce, woo, automattic
-Requires at least: 6.9
-Tested up to: 7.0
+Requires at least: 7.0
+Tested up to: 7.1
 WC tested up to: 11.0
 WC requires at least: 10.8
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.3
+Stable tag: 5.3.4
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,10 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.4 - 2026-08-24 =
+* Fix   - Stop a corrupted refund record from failing the whole orders export (REST and XML). An unreadable refund is logged and skipped: its order exports without that refund's data (so its item quantities and returns will not reflect the skipped refund) and the rest of the page is unaffected. Shipment notifications count shipped items from the readable refunds; an unreadable refund's quantity is still missing until the record is repaired.
+* Tweak - WordPress 7.1 Compatibility.
 
 = 5.3.3 - 2026-08-17 =
 * Fix   - Stop another plugin's error on the order note, or on its customer email, from failing the whole shipment notification. The shipment is still recorded, and the error is written to the ShipStation log with the file and line that caused it. Note that woocommerce_shipstation_shipnotify_status_updated now fires only when the order actually reached the shipped status.

@@ -136,6 +136,10 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 
 		$max_results = $total_orders_to_export->total;
 
+		// Must run before the export loop reads refunded quantities; see the
+		// prime_refunds_for_batch() docblock for the rationale (SHIPSTN-164).
+		Order_Util::prime_refunds_for_batch( $orders_to_export );
+
 		$orders_xml     = $xml->createElement( 'Orders' );
 		$orders_to_mark = array();
 
@@ -418,7 +422,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 						}
 
 						// current item quantity - refunded quantity.
-						$item_qty = $item->get_quantity() - abs( $order->get_qty_refunded_for_item( $item_id ) );
+						$item_qty = $item->get_quantity() - Order_Util::safe_qty_refunded_for_item( $order, $item_id );
 						$this->xml_append( $item_xml, 'Quantity', $item_qty, false );
 
 						$item_total = $export_discounts_as_separate_item ? $order->get_item_subtotal( $item, false, true ) : $order->get_item_total( $item, false, true );
@@ -518,6 +522,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			// finally so a throwing third-party callback inside the loop cannot
 			// leave the map populated, matching the REST controller.
 			Order_Util::flush_order_notes_cache();
+			Order_Util::flush_qty_refund_failure_log();
 		}
 
 		$orders_xml->setAttribute( 'page', $page );

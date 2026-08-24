@@ -286,8 +286,12 @@ class Main {
 	 * today -- the Order_Util containment still covers the note-hook and
 	 * email-render clusters there, leaving only the uncatchable OOM cluster,
 	 * which is the current behaviour on those versions anyway. The probe is the
-	 * mechanism itself rather than a version number, so it also fails closed onto
-	 * that same behaviour if WooCommerce ever moves the class.
+	 * `deferred_transactional_emails` registration in the public
+	 * `FeaturesUtil::get_features()`, which shipped with the queue in 10.8; the
+	 * queue class itself is off limits, like everything in WooCommerce's
+	 * Internal namespace. Presence, not `feature_is_enabled()`: the toggle only
+	 * sets the filter's default, and defaults to off. If the registration ever
+	 * disappears, this fails closed onto today's behaviour.
 	 *
 	 * Two priorities matter here:
 	 *  - `init:9` -- late enough for themes and plugins to have registered, and
@@ -310,9 +314,10 @@ class Main {
 			return;
 		}
 
-		// Below WooCommerce 10.8 the filter routes to WC_Background_Emailer, whose
-		// queue nothing would drain outside this request -- see the docblock.
-		if ( ! class_exists( \Automattic\WooCommerce\Internal\Email\DeferredEmailQueue::class ) ) {
+		// The feature registration arrived with the Action Scheduler queue in
+		// WooCommerce 10.8. Below that the filter routes to WC_Background_Emailer,
+		// and nothing drains its queue -- see the docblock.
+		if ( ! array_key_exists( 'deferred_transactional_emails', FeaturesUtil::get_features() ) ) {
 			return;
 		}
 

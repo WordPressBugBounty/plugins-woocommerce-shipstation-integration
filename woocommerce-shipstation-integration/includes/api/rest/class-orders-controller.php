@@ -500,6 +500,10 @@ class Orders_Controller extends API_Controller {
 			}
 		}
 
+		// Must run BEFORE the order hydration below; see the
+		// prime_refunds_for_batch() docblock for the rationale (SHIPSTN-164).
+		Order_Util::prime_refunds_for_batch( $ids_to_fetch );
+
 		$orders_by_id = $this->get_orders_by_ids( $ids_to_fetch );
 
 		$orders_to_mark = array();
@@ -540,6 +544,7 @@ class Orders_Controller extends API_Controller {
 			// accumulating across pages in long-lived processes, even when
 			// building one order's payload throws.
 			Order_Util::flush_order_notes_cache();
+			Order_Util::flush_qty_refund_failure_log();
 		}
 
 		return new WP_REST_Response( $sales_orders_data, 200 );
@@ -559,6 +564,10 @@ class Orders_Controller extends API_Controller {
 	 * @return WP_REST_Response
 	 */
 	private function get_orders_by_id_param( array $requested_ids ): WP_REST_Response {
+		// Must run BEFORE the order hydration below; see the
+		// prime_refunds_for_batch() docblock for the rationale (SHIPSTN-164).
+		Order_Util::prime_refunds_for_batch( $requested_ids );
+
 		$orders_by_id = $this->get_orders_by_ids( $requested_ids, array( 'status' => 'any' ) );
 
 		$sales_orders   = array();
@@ -625,6 +634,7 @@ class Orders_Controller extends API_Controller {
 			// accumulating across pages in long-lived processes, even when
 			// building one order's payload throws.
 			Order_Util::flush_order_notes_cache();
+			Order_Util::flush_qty_refund_failure_log();
 		}
 
 		$count = count( $sales_orders );
@@ -662,8 +672,13 @@ class Orders_Controller extends API_Controller {
 	 * post cache for every ID in one round trip so the per-order `read()` calls that
 	 * follow are cache hits.
 	 *
+	 * If the bulk fetch throws (core's refund prime runs inside it and can hit
+	 * a corrupted refund row when the batch could not be pre-primed), the
+	 * batch degrades to one contained `wc_get_order()` read per order.
+	 *
 	 * @since 5.0.4
 	 * @since 5.1.0 Added the $extra_query_args parameter.
+	 * @since 5.3.4 Falls back to per-order reads when the bulk fetch throws.
 	 *
 	 * @param int[] $order_ids        Order IDs to fetch.
 	 * @param array $extra_query_args Optional extra args merged into the wc_get_orders() call.
@@ -674,16 +689,54 @@ class Orders_Controller extends API_Controller {
 			return array();
 		}
 
-		$orders = wc_get_orders(
-			array_merge(
-				array(
-					'type'     => 'shop_order',
-					'post__in' => $order_ids,
-					'limit'    => -1,
-				),
-				$extra_query_args
-			)
-		);
+		try {
+			$orders = wc_get_orders(
+				array_merge(
+					array(
+						'type'     => 'shop_order',
+						'post__in' => $order_ids,
+						'limit'    => -1,
+					),
+					$extra_query_args
+				)
+			);
+		} catch ( \Throwable $e ) {
+			// A batch fetch runs core's refund-cache prime for any order the
+			// refund prime could not warm, and a corrupted refund row throws
+			// there (SHIPSTN-164). Single reads never run that prime, so fall
+			// back to one read per order and let an unreadable order degrade
+			// alone. The fallback drops $extra_query_args and the query's
+			// 'type' filter: the by-ID path is status-agnostic by design and
+			// the paged path pre-filtered its IDs, but wc_get_order() returns
+			// whatever the ID resolves to, so the type is re-checked below to
+			// keep WC_Order subclasses like subscriptions out of the export.
+			Logger::error(
+				sprintf(
+					'Bulk order fetch failed while loading the export batch: %s: %s. Retrying per order.',
+					get_class( $e ),
+					$e->getMessage()
+				)
+			);
+
+			$orders = array();
+			foreach ( $order_ids as $order_id ) {
+				try {
+					$order = wc_get_order( $order_id );
+					if ( $order instanceof \WC_Order && 'shop_order' === $order->get_type() ) {
+						$orders[] = $order;
+					}
+				} catch ( \Throwable $order_error ) {
+					Logger::error(
+						sprintf(
+							'Order #%d could not be read and was left out of the export: %s: %s',
+							$order_id,
+							get_class( $order_error ),
+							$order_error->getMessage()
+						)
+					);
+				}
+			}
+		}
 
 		$indexed = array();
 		foreach ( (array) $orders as $order ) {
@@ -703,6 +756,10 @@ class Orders_Controller extends API_Controller {
 	 * trigger its bulk priming helper, so without this the first `$order->get_items()`
 	 * on each order issues a separate SELECT.
 	 *
+	 * Refunds are NOT primed here: both callers run
+	 * `Order_Util::prime_refunds_for_batch()` before hydrating the batch's
+	 * order objects (see its docblock, SHIPSTN-164).
+	 *
 	 * @since 5.0.4
 	 *
 	 * @param int[] $order_ids Orders IDs.
@@ -714,7 +771,6 @@ class Orders_Controller extends API_Controller {
 		}
 
 		Order_Util::prime_order_items_for_batch( $order_ids );
-		Order_Util::prime_refunds_for_batch( $order_ids );
 		Order_Util::prime_order_notes_for_batch( $order_ids );
 	}
 
@@ -1218,7 +1274,7 @@ class Orders_Controller extends API_Controller {
 			$item_taxes = $item->get_taxes();
 
 			if ( 0 === $quantity ) {
-				$quantity = $item->get_quantity() - abs( $order->get_qty_refunded_for_item( $item_id ) );
+				$quantity = $item->get_quantity() - Order_Util::safe_qty_refunded_for_item( $order, $item_id );
 			}
 
 			// With a non-integer quantity (i.e. 0.375) always export the quantity as 1 with an added product details key-value.
@@ -1279,6 +1335,9 @@ class Orders_Controller extends API_Controller {
 	/**
 	 * Get returns info for the order.
 	 *
+	 * A refund that cannot be read (corrupted row, SHIPSTN-164) degrades this
+	 * order to empty returns data instead of fataling the whole export batch.
+	 *
 	 * @param WC_Order $order Order object.
 	 *
 	 * @return array
@@ -1286,48 +1345,80 @@ class Orders_Controller extends API_Controller {
 	public function get_returns( $order ) {
 		$returns = array();
 
-		foreach ( $order->get_refunds() as $refund ) {
-			$qty = 0;
-			foreach ( $refund->get_items() as $refunded_item ) {
-				$qty += $refunded_item->get_quantity();
-			}
-
-			/**
-			 * Filters the return status for a refund.
-			 *
-			 * @since 5.0.0
-			 *
-			 * @param string          $status The return status.
-			 * @param WC_Order_Refund $refund The refund object.
-			 * @param WC_Order        $order  The order object.
-			 */
-			$status      = apply_filters( 'woocommerce_shipstation_return_status', ucwords( $refund->get_status() ), $refund, $order );
-			$refund_args = $refund->get_meta( '_wc_shipstation_refund_args', true );
-			$return_data = array(
-				'status'             => $status,
-				'created_date_time'  => $this->get_shipstation_date_format( $refund->get_date_created() ),
-				'modified_date_time' => $this->get_shipstation_date_format( $refund->get_date_modified() ),
-				'total_quantity'     => abs( $qty ),
-				'currency'           => $this->get_currency_code(),
-				'authorization'      => array(
-					/**
-					 * Filters whether the return is approved.
-					 *
-					 * @since 5.0.0
-					 *
-					 * @param bool            $is_approved Whether the return is approved.
-					 * @param WC_Order_Refund $refund      The refund object.
-					 * @param WC_Order        $order       The order object.
-					 */
-					'is_approved' => apply_filters( 'woocommerce_shipstation_return_is_approved', true, $refund, $order ),
-				),
-				'refunds'            => $this->get_refund_data( $refund ),
+		try {
+			$refunds = $order->get_refunds();
+		} catch ( \Throwable $e ) {
+			Logger::error(
+				sprintf(
+					'Refunds for order %d could not be read and were left out of the export: %s: %s',
+					$order->get_id(),
+					get_class( $e ),
+					$e->getMessage()
+				)
 			);
 
-			if ( ! empty( $refund_args['restock_items'] ) ) {
-				$return_data['return_requested_fulfillments'] = $this->get_return_requested_fulfillments( $refund );
+			return $returns;
+		}
+
+		// Per-refund containment: the refunds are hydrated by now, but reading
+		// their line items or meta, and the two filters below, can still throw
+		// on corrupt data or a broken callback. One bad refund then costs its
+		// own return entry, not the order's returns array (SHIPSTN-164).
+		foreach ( $refunds as $refund ) {
+			try {
+				$qty = 0;
+				foreach ( $refund->get_items() as $refunded_item ) {
+					$qty += $refunded_item->get_quantity();
+				}
+
+				/**
+				 * Filters the return status for a refund.
+				 *
+				 * @since 5.0.0
+				 *
+				 * @param string          $status The return status.
+				 * @param WC_Order_Refund $refund The refund object.
+				 * @param WC_Order        $order  The order object.
+				 */
+				$status      = apply_filters( 'woocommerce_shipstation_return_status', ucwords( $refund->get_status() ), $refund, $order );
+				$refund_args = $refund->get_meta( '_wc_shipstation_refund_args', true );
+				$return_data = array(
+					'status'             => $status,
+					'created_date_time'  => $this->get_shipstation_date_format( $refund->get_date_created() ),
+					'modified_date_time' => $this->get_shipstation_date_format( $refund->get_date_modified() ),
+					'total_quantity'     => abs( $qty ),
+					'currency'           => $this->get_currency_code(),
+					'authorization'      => array(
+						/**
+						 * Filters whether the return is approved.
+						 *
+						 * @since 5.0.0
+						 *
+						 * @param bool            $is_approved Whether the return is approved.
+						 * @param WC_Order_Refund $refund      The refund object.
+						 * @param WC_Order        $order       The order object.
+						 */
+						'is_approved' => apply_filters( 'woocommerce_shipstation_return_is_approved', true, $refund, $order ),
+					),
+					'refunds'            => $this->get_refund_data( $refund ),
+				);
+
+				if ( ! empty( $refund_args['restock_items'] ) ) {
+					$return_data['return_requested_fulfillments'] = $this->get_return_requested_fulfillments( $refund );
+				}
+				$returns[] = $return_data;
+			} catch ( \Throwable $e ) {
+				Logger::error(
+					sprintf(
+						'Refund #%d of order #%d could not be serialized and was left out of the export: %s: %s',
+						$refund->get_id(),
+						$order->get_id(),
+						get_class( $e ),
+						$e->getMessage()
+					)
+				);
+				continue;
 			}
-			$returns[] = $return_data;
 		}
 
 		return $returns;
@@ -1952,6 +2043,11 @@ class Orders_Controller extends API_Controller {
 			);
 		}
 
+		// The item counts above can memoise refund read failures. Flush the
+		// memo like the export loops do, so a later notification for the same
+		// order in a long-lived process still logs the recurring failure.
+		Order_Util::flush_qty_refund_failure_log();
+
 		return new WP_REST_Response(
 			array(
 				'notification_results' => $response,
@@ -2022,6 +2118,10 @@ class Orders_Controller extends API_Controller {
 			$shipped_item_count += $qty_shipped;
 			$shipped_items[]     = $item_name . $item_sku . ' x ' . $qty_shipped;
 		}
+
+		// A corrupted refund otherwise costs this order every refund's quantity,
+		// not just the unreadable one (SHIPSTN-164).
+		Order_Util::prime_refunds_for_batch( array( $order->get_id() ) );
 
 		// Number of items in WC order.
 		$total_item_count = Order_Util::order_items_to_ship_count( $order );

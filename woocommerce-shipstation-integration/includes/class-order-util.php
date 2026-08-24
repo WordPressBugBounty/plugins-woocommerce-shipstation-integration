@@ -355,7 +355,7 @@ class Order_Util {
 			}
 
 			if ( self::item_needs_shipping( $item, $product ) ) {
-				$needs_shipping += ( $qty - abs( $order->get_qty_refunded_for_item( $item_id ) ) );
+				$needs_shipping += ( $qty - self::safe_qty_refunded_for_item( $order, $item_id ) );
 			}
 		}
 
@@ -1310,10 +1310,17 @@ class Order_Util {
 		);
 		$cache_values = wc_cache_get_multiple( $cache_keys, 'orders' );
 
+		// A drop-in object cache may return something other than the expected
+		// map; treat that as a total miss rather than indexing into it, the way
+		// core's own batch primes do.
 		$to_prime = array();
-		foreach ( $order_ids as $id ) {
-			if ( false === $cache_values[ 'order-items-' . $id ] ) {
-				$to_prime[] = $id;
+		if ( ! is_array( $cache_values ) ) {
+			$to_prime = $order_ids;
+		} else {
+			foreach ( $order_ids as $id ) {
+				if ( false === $cache_values[ 'order-items-' . $id ] ) {
+					$to_prime[] = $id;
+				}
 			}
 		}
 
@@ -1346,20 +1353,65 @@ class Order_Util {
 	}
 
 	/**
-	 * Prime the refunds cache for a batch of order IDs.
+	 * Prime the refund cache for a batch of order IDs.
 	 *
-	 * `$order->get_refunds()` caches its result under the key
-	 * `WC_Cache_Helper::get_cache_prefix( 'orders' ) . 'refunds' . $id` in the
-	 * `'orders'` group. On HPOS the CPT store's `prime_refund_caches_for_order()`
-	 * helper is not triggered, so without this call the first `get_refunds()` on
-	 * each order runs a separate `wc_get_orders( type = shop_order_refund )` query.
+	 * `$order->get_refunds()` caches each order's refunds in the `'orders'`
+	 * group, but WooCommerce changed the key and the payload in 10.8.0:
+	 *
+	 * - WC 10.8+  reads `WC_Cache_Helper::get_cache_prefix( 'orders' ) . 'refund_ids' . $id`, holding refund IDs.
+	 * - WC 10.7.x reads `WC_Cache_Helper::get_cache_prefix( 'orders' ) . 'refunds' . $id`, holding refund objects.
+	 *
+	 * Core's own batch helper, `prime_refund_caches_for_orders()`, checks
+	 * whichever key its version reads and skips every order already cached; it
+	 * exists from WC 10.7 only. Only the key the running version reads is
+	 * primed and checked for warmth here: hydrated refund objects are
+	 * expensive to serialize into a persistent cache group and nothing reads
+	 * their key on 10.8+, while the `refund_ids` key costs one small array and
+	 * is written on every version. Checking the running version's key alone
+	 * also lets a batch that core primed moments earlier skip cleanly, since
+	 * core writes only that key. The plugin declares `WC requires at least:
+	 * 10.8`, but WordPress does not enforce that header, so a 10.7 store can
+	 * update the plugin and land in this method: there the objects key is
+	 * primed too, because core's prime would otherwise re-fetch and fatal on
+	 * the corrupted row exactly as it does without this method.
+	 *
+	 * The `'orders'` group can be persistent, so a degraded entry written here
+	 * stays visible to every later reader - other requests included - until an
+	 * order write rotates the group prefix (`wc_delete_shop_order_transients()`).
 	 *
 	 * Fetches every refund whose parent is in the batch with a single
-	 * `wc_get_orders()` call (HPOS aliases `post_parent__in` to `parent_order_id`),
-	 * groups the results by parent, and stashes each order's refunds under the
-	 * expected cache key so the per-order `get_refunds()` becomes a memory read.
+	 * `wc_get_orders()` call (HPOS aliases `post_parent__in` to
+	 * `parent_order_id`), groups the refunds by parent, and stashes each
+	 * parent's IDs and objects under the two keys above.
+	 *
+	 * A refund that cannot be hydrated (corrupted row, SHIPSTN-164) is logged
+	 * and skipped instead of fataling the batch: its parent order is primed
+	 * with its readable refunds only, so downstream `get_refunds()` callers
+	 * (and core's own prime, which would otherwise re-fetch and hit the same
+	 * fatal) never touch the bad row. Call this BEFORE hydrating the batch's
+	 * order objects: a `wc_get_orders()` fetch of shop_orders runs core's
+	 * refund prime internally, and only a warm cache keeps it from throwing.
+	 *
+	 * A fetch that returns zero refunds for the whole batch writes nothing:
+	 * that result cannot be told apart from a query failure that HPOS
+	 * swallows into an empty set, and an empty entry would stop core's prime
+	 * from ever re-checking. The batch is left cold for core's prime instead.
+	 * On a page with no refunds at all this forfeits the prime's saving (the
+	 * XML export has no core batch prime, so its orders resolve refunds one
+	 * by one); that costs one query and is accepted over trusting an
+	 * ambiguous empty answer, since the batch query and the per-order queries
+	 * do not necessarily fail together.
 	 *
 	 * @since 5.0.4
+	 * @since 5.3.4 Primes the key the running WooCommerce reads (plus the
+	 *              pre-10.8 `refunds` key below 10.8), falls back to
+	 *              per-refund reads when the bulk fetch throws, and skips the
+	 *              write entirely when the fetch reports no refunds for the
+	 *              batch.
+	 *
+	 * @see \WC_Order::get_refunds() Reads the cache keys primed here.
+	 * @see \Abstract_WC_Order_Data_Store_CPT::prime_refund_caches_for_orders() Core's
+	 *      batch prime; runs inside shop_order hydration and skips warm keys.
 	 *
 	 * @param int[] $order_ids Order IDs to prime.
 	 * @return void
@@ -1371,20 +1423,37 @@ class Order_Util {
 
 		$order_ids = array_values( array_unique( array_map( 'absint', $order_ids ) ) );
 
-		$cache_keys    = array();
-		$keys_by_order = array();
+		$prime_legacy = self::needs_legacy_refund_cache_key();
+
+		$prefix      = \WC_Cache_Helper::get_cache_prefix( 'orders' );
+		$read_keys   = array();
+		$id_keys     = array();
+		$object_keys = array();
 		foreach ( $order_ids as $id ) {
-			$key                  = \WC_Cache_Helper::get_cache_prefix( 'orders' ) . 'refunds' . $id;
-			$cache_keys[]         = $key;
-			$keys_by_order[ $id ] = $key;
+			$id_keys[ $id ] = $prefix . 'refund_ids' . $id;
+			if ( $prime_legacy ) {
+				$object_keys[ $id ] = $prefix . 'refunds' . $id;
+			}
+			$read_keys[ $id ] = $prime_legacy ? $object_keys[ $id ] : $id_keys[ $id ];
 		}
 
-		$cache_values = wc_cache_get_multiple( $cache_keys, 'orders' );
+		$cache_values = wc_cache_get_multiple( array_values( $read_keys ), 'orders' );
 
+		// Matches core's guard in prime_refund_caches_for_orders(): a drop-in
+		// object cache that answers with anything but the expected map means
+		// nothing is known to be warm.
+		//
+		// An order is skipped when the key the running WooCommerce reads is
+		// warm. Core's own prime writes only that key, so requiring more would
+		// re-prime every batch core already primed.
 		$to_prime = array();
-		foreach ( $order_ids as $id ) {
-			if ( false === $cache_values[ $keys_by_order[ $id ] ] ) {
-				$to_prime[] = $id;
+		if ( ! is_array( $cache_values ) ) {
+			$to_prime = $order_ids;
+		} else {
+			foreach ( $order_ids as $id ) {
+				if ( false === $cache_values[ $read_keys[ $id ] ] ) {
+					$to_prime[] = $id;
+				}
 			}
 		}
 
@@ -1392,13 +1461,51 @@ class Order_Util {
 			return;
 		}
 
-		$refunds = wc_get_orders(
-			array(
-				'type'            => 'shop_order_refund',
-				'post_parent__in' => $to_prime,
-				'limit'           => -1,
-			)
-		);
+		try {
+			$refunds = wc_get_orders(
+				array(
+					'type'            => 'shop_order_refund',
+					'post_parent__in' => $to_prime,
+					'limit'           => -1,
+				)
+			);
+
+			if ( empty( $refunds ) ) {
+				// Zero refunds for the whole batch is indistinguishable from a
+				// silently failed query: OrdersTableDataStore::query() swallows
+				// an \Exception from the query build into an empty result. An
+				// empty entry is authoritative for core's own prime, so writing
+				// it here would export the page without refunds and poison the
+				// shared 'orders' group. Write nothing and let core's prime
+				// fill the keys. A result holding at least one refund proves
+				// the query ran (the swallow replaces the whole result, never
+				// part of it), so per-parent empty sets are safe below.
+				return;
+			}
+		} catch ( \Throwable $e ) {
+			// A corrupted refund row can make WooCommerce core throw while
+			// hydrating the refund object (SHIPSTN-164). Retry with one
+			// non-hydrating ID listing plus per-refund reads so a single bad
+			// row degrades its own order instead of fataling the whole batch.
+			Logger::error(
+				sprintf(
+					'Bulk refund fetch failed while priming refunds for export: %s: %s. Retrying per refund.',
+					get_class( $e ),
+					$e->getMessage()
+				)
+			);
+
+			$fallback = self::get_readable_refunds( $to_prime );
+			$refunds  = $fallback['refunds'];
+
+			// An order whose refund IDs could not even be listed must not be
+			// primed: an empty prime would hide refunds that may be readable.
+			$to_prime = array_values( array_diff( $to_prime, $fallback['skip_parents'] ) );
+
+			if ( empty( $to_prime ) ) {
+				return;
+			}
+		}
 
 		$grouped = array_fill_keys( $to_prime, array() );
 		foreach ( (array) $refunds as $refund ) {
@@ -1412,8 +1519,214 @@ class Order_Util {
 		}
 
 		foreach ( $grouped as $id => $list ) {
-			wp_cache_set( $keys_by_order[ $id ], $list, 'orders' );
+			$refund_ids = array();
+			foreach ( $list as $refund ) {
+				$refund_ids[] = $refund->get_id();
+			}
+
+			wp_cache_set( $id_keys[ $id ], $refund_ids, 'orders' );
+			if ( $prime_legacy ) {
+				wp_cache_set( $object_keys[ $id ], $list, 'orders' );
+			}
 		}
+	}
+
+	/**
+	 * Overrides the WC_VERSION check in needs_legacy_refund_cache_key().
+	 *
+	 * Test seam only: WC_VERSION is a constant and cannot vary per test.
+	 * Null derives the answer from the running WooCommerce.
+	 *
+	 * @var bool|null
+	 */
+	private static ?bool $needs_legacy_refund_cache_key = null;
+
+	/**
+	 * Whether the pre-10.8 refund objects cache key must be primed.
+	 *
+	 * `WC_Order::get_refunds()` reads `refund_ids{id}` (IDs) from WC 10.8 and
+	 * `refunds{id}` (hydrated objects) before that. Nothing reads the objects
+	 * key on 10.8+, and hydrated refund objects are expensive to store in a
+	 * persistent cache group, so it is primed only where it is read.
+	 *
+	 * @since 5.3.4
+	 *
+	 * @return bool
+	 */
+	private static function needs_legacy_refund_cache_key(): bool {
+		if ( null !== self::$needs_legacy_refund_cache_key ) {
+			return self::$needs_legacy_refund_cache_key;
+		}
+
+		return defined( 'WC_VERSION' ) && version_compare( WC_VERSION, '10.8', '<' );
+	}
+
+	/**
+	 * Fetch the refunds for a set of parent orders, skipping any refund that
+	 * cannot be hydrated.
+	 *
+	 * Fallback for prime_refunds_for_batch() when the bulk fetch throws. One
+	 * ID-only query lists the batch's refunds - `'return' => 'ids'` never
+	 * hydrates a refund object, so a corrupted row (SHIPSTN-164) cannot throw
+	 * there - and each refund is then read individually. An unreadable refund
+	 * is logged and left out while every readable refund is still returned.
+	 *
+	 * A listing that returns zero IDs marks every parent as unprimable: the
+	 * bulk fetch only throws while hydrating a refund, so the batch
+	 * demonstrably holds at least one refund row, and an empty listing can
+	 * only mean the query failed silently (HPOS swallows a query-build
+	 * exception into an empty result). Trusting it would prime every order
+	 * in the batch as refund-less and hide real refunds from the shared
+	 * cache. A listing that returns IDs proves the query ran, so parents
+	 * whose refunds all turn out unreadable are still safely primed with an
+	 * empty, filtered set.
+	 *
+	 * Cost is one query plus one read per refund, independent of how many
+	 * orders the page holds.
+	 *
+	 * @since 5.3.4
+	 *
+	 * @param int[] $parent_ids Parent order IDs whose refunds to fetch.
+	 * @return array{refunds: \WC_Order_Refund[], skip_parents: int[]} Readable
+	 *               refunds, plus the parents whose refund IDs could not be
+	 *               listed (callers must not prime those orders).
+	 */
+	private static function get_readable_refunds( array $parent_ids ): array {
+		$readable = array();
+
+		try {
+			$refund_ids = wc_get_orders(
+				array(
+					'type'            => 'shop_order_refund',
+					'post_parent__in' => $parent_ids,
+					'limit'           => -1,
+					'return'          => 'ids',
+				)
+			);
+		} catch ( \Throwable $e ) {
+			Logger::error(
+				sprintf(
+					'Refund IDs for the export batch could not be listed while priming refunds for export; its orders are left unprimed: %s: %s',
+					get_class( $e ),
+					$e->getMessage()
+				)
+			);
+
+			return array(
+				'refunds'      => array(),
+				'skip_parents' => $parent_ids,
+			);
+		}
+
+		if ( empty( $refund_ids ) ) {
+			Logger::error(
+				'Refund IDs for the export batch came back empty after a refund hydration failure; its orders are left unprimed.'
+			);
+
+			return array(
+				'refunds'      => array(),
+				'skip_parents' => $parent_ids,
+			);
+		}
+
+		foreach ( (array) $refund_ids as $refund_id ) {
+			try {
+				$refund = wc_get_order( $refund_id );
+			} catch ( \Throwable $e ) {
+				Logger::error(
+					sprintf(
+						'Refund #%d could not be read and was left out of the export: %s: %s',
+						$refund_id,
+						get_class( $e ),
+						$e->getMessage()
+					)
+				);
+				continue;
+			}
+
+			if ( $refund instanceof \WC_Order_Refund ) {
+				$readable[] = $refund;
+			} else {
+				Logger::error(
+					sprintf( 'Refund #%d could not be loaded and was left out of the export.', $refund_id )
+				);
+			}
+		}
+
+		return array(
+			'refunds'      => $readable,
+			'skip_parents' => array(),
+		);
+	}
+
+	/**
+	 * Orders whose refund read failure was already logged this request.
+	 *
+	 * @var array<int, bool>
+	 */
+	private static array $qty_refund_failure_logged = array();
+
+	/**
+	 * Read the refunded quantity for a line item, tolerating unreadable refunds.
+	 *
+	 * `WC_Order::get_qty_refunded_for_item()` iterates `$order->get_refunds()`,
+	 * which re-queries and hydrates the order's refunds whenever the refund
+	 * cache is cold - after an eviction on a persistent object cache, or when
+	 * the prime's fallback could not determine the order's refund IDs. A
+	 * corrupted refund row (SHIPSTN-164) then throws at the consumption site
+	 * even though prime_refunds_for_batch() already ran. Degrade to zero
+	 * refunded quantity so the export continues; the order then exports its
+	 * full, un-refunded item quantities, matching the batch-prime degradation.
+	 *
+	 * Every shippable item of the order fails the same way, so the failure is
+	 * logged once per order per export page rather than once per item. The
+	 * memo is flushed with flush_qty_refund_failure_log() at the end of each
+	 * export page and shipnotify request, so a long-lived process (WP-CLI,
+	 * cron) keeps logging a failure that recurs later.
+	 *
+	 * @since 5.3.4
+	 *
+	 * @param WC_Order $order   Order being exported.
+	 * @param int      $item_id Line item ID.
+	 * @return int|float Absolute refunded quantity, or 0 when the order's refunds cannot be read.
+	 */
+	public static function safe_qty_refunded_for_item( WC_Order $order, int $item_id ) {
+		try {
+			return abs( $order->get_qty_refunded_for_item( $item_id ) );
+		} catch ( \Throwable $e ) {
+			$order_id = $order->get_id();
+
+			if ( ! isset( self::$qty_refund_failure_logged[ $order_id ] ) ) {
+				self::$qty_refund_failure_logged[ $order_id ] = true;
+
+				Logger::error(
+					sprintf(
+						'Refunded quantity for item #%d of order #%d could not be read; exporting the full quantities: %s: %s',
+						$item_id,
+						$order_id,
+						get_class( $e ),
+						$e->getMessage()
+					)
+				);
+			}
+
+			return 0;
+		}
+	}
+
+	/**
+	 * Reset the once-per-order memo of logged refund read failures.
+	 *
+	 * Called at the end of every export page (alongside the notes-cache flush)
+	 * and of every shipnotify request, so the memo cannot grow across pages in
+	 * a long-lived process or silence a recurring failure.
+	 *
+	 * @since 5.3.4
+	 *
+	 * @return void
+	 */
+	public static function flush_qty_refund_failure_log(): void {
+		self::$qty_refund_failure_logged = array();
 	}
 
 	/**

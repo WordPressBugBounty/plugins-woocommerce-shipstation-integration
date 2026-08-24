@@ -358,6 +358,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/bootstrap.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Corrupt_Refund_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Corrupt_Refund_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Notes_Flush_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Notes_Flush_Test.php'
@@ -369,6 +373,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Shipnotify_Corrupt_Refund_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Shipnotify_Corrupt_Refund_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Shipnotify_Hook_Fatal_Test' => array(
 		'version' => 'dev-trunk',
@@ -398,6 +406,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Diagnostics_Controller_Permission_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Fake_Subscription_Order' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Fake_Subscription_Order.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Get_Fulfillment_Items_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Get_Fulfillment_Items_Test.php'
@@ -409,6 +421,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Inventory_Controller_Permission_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Inventory_Controller_Permission_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Corrupt_Refund_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Corrupt_Refund_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Permission_Test' => array(
 		'version' => 'dev-trunk',
@@ -425,6 +441,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Transport_Recording_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Transport_Recording_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Update_Orders_Shipments_Corrupt_Refund_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Update_Orders_Shipments_Corrupt_Refund_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Update_Orders_Shipments_Empty_Items_Test' => array(
 		'version' => 'dev-trunk',
@@ -554,6 +574,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Containment_Gaps_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Corrupt_Refund_Degradation_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Corrupt_Refund_Degradation_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Get_Checkout_Rate_Code_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Get_Checkout_Rate_Code_Test.php'
@@ -578,9 +602,21 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Order_Notes_Limit_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Prime_Refunds_For_Batch_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Prime_Refunds_For_Batch_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Safe_Qty_Refunded_Log_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Safe_Qty_Refunded_Log_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Shipment_Processed_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Shipment_Processed_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Qty_Refund_Memo_Trait' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Qty_Refund_Memo_Trait.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\REST_API_Loader_Test' => array(
 		'version' => 'dev-trunk',
@@ -593,6 +629,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Status_Mapping_Mode_UX_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Status_Mapping_Mode_UX_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Throwing_Refund_Data_Store' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Throwing_Refund_Data_Store.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Unmapped_Custom_Status_Notice_Test' => array(
 		'version' => 'dev-trunk',

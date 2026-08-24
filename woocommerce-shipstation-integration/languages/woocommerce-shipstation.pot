@@ -2,10 +2,10 @@
 # This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: ShipStation for WooCommerce 5.3.3\n"
+"Project-Id-Version: ShipStation for WooCommerce 5.3.4\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/woocommerce-shipstation\n"
-"POT-Creation-Date: 2026-08-17 10:30:33+00:00\n"
+"POT-Creation-Date: 2026-08-24 09:56:02+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -18,18 +18,18 @@ msgstr ""
 msgid "Invalid start_date or end_date format."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:172
-#: includes/api/rest/class-orders-controller.php:529
-#: includes/api/rest/class-orders-controller.php:614
+#: includes/api/requests/class-wc-shipstation-api-export.php:176
+#: includes/api/rest/class-orders-controller.php:533
+#: includes/api/rest/class-orders-controller.php:623
 #. translators: 1: order id
 msgid "Order %s can not be found."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:485
+#: includes/api/requests/class-wc-shipstation-api-export.php:489
 msgid "Total Discount"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:529
+#: includes/api/requests/class-wc-shipstation-api-export.php:534
 #. translators: 1: total count
 msgid "Exported %s orders"
 msgstr ""
@@ -74,48 +74,48 @@ msgid ""
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:201
-#: includes/api/rest/class-orders-controller.php:1910
+#: includes/api/rest/class-orders-controller.php:2001
 msgid "ShipNotify Item: "
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:214
-#: includes/api/rest/class-orders-controller.php:2018
+#: includes/api/rest/class-orders-controller.php:2114
 #. translators: 1: item name
 msgid "Item %s is not shippable product. Skipping."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:232
-#: includes/api/rest/class-orders-controller.php:2034
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:236
+#: includes/api/rest/class-orders-controller.php:2134
 #. translators: 1) shipped items 2) carrier's name 3) shipped date, 4) tracking
 #. number
 msgid "%1$s shipped via %2$s on %3$s with tracking number %4$s."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:248
-#: includes/api/rest/class-orders-controller.php:2050
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:252
+#: includes/api/rest/class-orders-controller.php:2150
 #. translators: 1) number of shipped items 2) total shipped items 3) order ID
 msgid "Shipped %1$d out of %2$d items in order %3$s"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:279
-#: includes/api/rest/class-orders-controller.php:2080
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:283
+#: includes/api/rest/class-orders-controller.php:2180
 #. translators: 1) carrier's name 2) shipped date, 3) tracking number
 msgid "Items shipped via %1$s on %2$s with tracking number %3$s (Shipstation)."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:286
-#: includes/api/rest/class-orders-controller.php:2087
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:290
+#: includes/api/rest/class-orders-controller.php:2187
 #. translators: 1: order id
 msgid "No items found - shipping entire order %d."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:302
-#: includes/api/rest/class-orders-controller.php:2103
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:306
+#: includes/api/rest/class-orders-controller.php:2203
 msgid "You're using Shipment Tracking < 1.4.0. Please update!"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:432
-#: includes/api/rest/class-orders-controller.php:2234
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:436
+#: includes/api/rest/class-orders-controller.php:2334
 #. translators: 1) order ID 2) shipment status
 msgid "Updated order %1$s to status %2$s"
 msgstr ""
@@ -226,60 +226,60 @@ msgstr ""
 msgid "Error retrieving orders."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:593
+#: includes/api/rest/class-orders-controller.php:602
 #. translators: %d: WC order ID requested via order_ids[] that was not found.
 msgid "order_ids fetch: order %d not found."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:923
+#: includes/api/rest/class-orders-controller.php:979
 #. translators: %1$s is a coupon code.
 msgid "Discount from coupon: %1$s"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:947
+#: includes/api/rest/class-orders-controller.php:1003
 msgid "Additional Discount"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1588
+#: includes/api/rest/class-orders-controller.php:1679
 msgid "Tax"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1805
+#: includes/api/rest/class-orders-controller.php:1896
 msgid "Notification ID is empty for this notification: "
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1813
+#: includes/api/rest/class-orders-controller.php:1904
 msgid "Empty order ID"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1817
+#: includes/api/rest/class-orders-controller.php:1908
 #. translators: %1$s is the notification id.
 msgid "Notification ID: %1$s doesnt have order ID."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1826
+#: includes/api/rest/class-orders-controller.php:1917
 msgid "Order ID is not numeric"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1830
+#: includes/api/rest/class-orders-controller.php:1921
 #. translators: %1$s is the order id, %2$d is the notification id.
 msgid "Order ID: %1$d from notification ID: %2$s is not numeric."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1850
+#: includes/api/rest/class-orders-controller.php:1941
 msgid "Order not found"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1856
+#: includes/api/rest/class-orders-controller.php:1947
 #. translators: %1$d is the order ID, %2$s is the order number.
 msgid "Order ID: %1$d or Order number: %2$s cannot be found."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1883
+#: includes/api/rest/class-orders-controller.php:1974
 msgid "Skipped this item because doesnt have description and quantity: "
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1999
+#: includes/api/rest/class-orders-controller.php:2095
 #. translators: 1) notification ID 2) order ID
 msgid ""
 "Notification ID: %1$s was already recorded on order %2$s. Skipping the "
@@ -567,15 +567,15 @@ msgid ""
 "download %s here."
 msgstr ""
 
-#: includes/class-main.php:553
+#: includes/class-main.php:558
 msgid "Settings"
 msgstr ""
 
-#: includes/class-main.php:554
+#: includes/class-main.php:559
 msgid "Support"
 msgstr ""
 
-#: includes/class-main.php:555
+#: includes/class-main.php:560
 msgid "Docs"
 msgstr ""
 
@@ -587,28 +587,28 @@ msgstr ""
 msgid "Order has been exported to Shipstation"
 msgstr ""
 
-#: includes/class-order-util.php:2108
+#: includes/class-order-util.php:2421
 #. translators: 1) order ID 2) throwable class 3) throwable message 4) file
 #. path 5) line number
 msgid "A callback on the order note for order %1$d failed: %2$s: %3$s in %4$s:%5$d."
 msgstr ""
 
-#: includes/class-order-util.php:2116
+#: includes/class-order-util.php:2429
 msgid "The note was written and the request was not aborted."
 msgstr ""
 
-#: includes/class-order-util.php:2117
+#: includes/class-order-util.php:2430
 msgid "The note was not written and the request was not aborted."
 msgstr ""
 
-#: includes/class-order-util.php:2131
+#: includes/class-order-util.php:2444
 #. translators: %d: order ID
 msgid ""
 "No tracking note was recorded for order %d: add_order_note() reported no "
 "comment ID."
 msgstr ""
 
-#: includes/class-order-util.php:2214
+#: includes/class-order-util.php:2527
 #. translators: 1) order ID 2) throwable class 3) throwable message 4) file
 #. path 5) line number
 msgid ""
@@ -616,17 +616,17 @@ msgid ""
 "%4$s:%5$d."
 msgstr ""
 
-#: includes/class-order-util.php:2223
+#: includes/class-order-util.php:2536
 #. translators: %s: order status
 msgid "The order reached %s."
 msgstr ""
 
-#: includes/class-order-util.php:2225
+#: includes/class-order-util.php:2538
 #. translators: %s: order status
 msgid "The order did not reach %s."
 msgstr ""
 
-#: includes/class-order-util.php:2311
+#: includes/class-order-util.php:2624
 #. translators: 1) description of the contained handoff 2) throwable class 3)
 #. throwable message 4) file path 5) line number
 msgid "A failure in %1$s was contained: %2$s: %3$s in %4$s:%5$d."

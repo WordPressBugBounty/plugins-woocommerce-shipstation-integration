@@ -1,5 +1,9 @@
 *** ShipStation for WooCommerce ***
 
+= 5.3.4 - 2026-08-24 =
+* Fix   - Stop a corrupted refund record from failing the whole orders export (REST and XML). An unreadable refund is logged and skipped: its order exports without that refund's data (so its item quantities and returns will not reflect the skipped refund) and the rest of the page is unaffected. Shipment notifications count shipped items from the readable refunds; an unreadable refund's quantity is still missing until the record is repaired.
+* Tweak - WordPress 7.1 Compatibility.
+
 = 5.3.3 - 2026-08-17 =
 * Fix   - Stop another plugin's error on the order note, or on its customer email, from failing the whole shipment notification. The shipment is still recorded, and the error is written to the ShipStation log with the file and line that caused it. Note that woocommerce_shipstation_shipnotify_status_updated now fires only when the order actually reached the shipped status.
 * Fix   - Complete the order after a shipment notification even when another plugin's error interrupts a write to the order. On stores using the older post-based order storage this could previously leave the order in its old status, with the shipment recorded but never marked complete.

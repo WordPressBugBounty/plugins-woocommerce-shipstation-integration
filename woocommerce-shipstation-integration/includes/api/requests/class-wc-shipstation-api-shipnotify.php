@@ -221,6 +221,10 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 			}
 		}
 
+		// A corrupted refund otherwise costs this order every refund's quantity,
+		// not just the unreadable one (SHIPSTN-164).
+		Order_Util::prime_refunds_for_batch( array( $order->get_id() ) );
+
 		// Number of items in WC order.
 		$total_item_count = Order_Util::order_items_to_ship_count( $order );
 
@@ -451,6 +455,11 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 				);
 			}
 		}
+
+		// The item count above can memoise a refund read failure. Flush it like
+		// the export loops do, so a later notification for the same order in a
+		// long-lived process still logs the recurring failure.
+		Order_Util::flush_qty_refund_failure_log();
 
 		status_header( 200 );
 		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
