@@ -10,12 +10,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use WooCommerce\Shipping\ShipStation\Checkout;
+use WooCommerce\Shipping\ShipStation\Logger;
 use WooCommerce\Shipping\ShipStation\Order_Util;
 
 /**
  * WC_Shipstation_API_Export Class
  */
 class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
+
+	/**
+	 * Order IDs the shrunken-page warning names.
+	 *
+	 * @var int
+	 */
+	private const MAX_SKIPPED_IDS_LOGGED = 20;
 
 	/**
 	 * Constructor
@@ -87,7 +95,6 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 	 * Do the request
 	 */
 	public function request() {
-		global $wpdb;
 		// phpcs:disable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase --- ShipStation provides an object with camelCase properties and method
 		// phpcs:disable WordPress.Security.NonceVerification.Recommended --- Using WC_ShipStation_Integration::$auth_key for security verification
 		$this->validate_input( array( 'start_date', 'end_date' ) );
@@ -96,7 +103,6 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		$xml               = new DOMDocument( '1.0', 'utf-8' );
 		$xml->formatOutput = true;
 		$page              = max( 1, isset( $_GET['page'] ) ? absint( $_GET['page'] ) : 1 );
-		$exported          = 0;
 		$raw_start_date    = isset( $_GET['start_date'] ) ? urldecode( wc_clean( wp_unslash( $_GET['start_date'] ) ) ) : false;
 		$raw_end_date      = isset( $_GET['end_date'] ) ? urldecode( wc_clean( wp_unslash( $_GET['end_date'] ) ) ) : false;
 		$store_weight_unit = get_option( 'woocommerce_weight_unit' );
@@ -110,6 +116,115 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			$this->trigger_error( __( 'Invalid start_date or end_date format.', 'woocommerce-shipstation-integration' ) );
 			return;
 		}
+
+		// A throwable escaping here used to die mid-response with nothing
+		// logged (SHIPSTN-171). The buffer keeps stray output from breaking
+		// the error response's headers.
+		$buffer_level  = ob_get_level();
+		$failure       = null;
+		$response_body = '';
+		$exported      = 0;
+		$stray         = '';
+
+		ob_start();
+
+		try {
+			list( $response_body, $exported ) = $this->process_export( $xml, $page, $start_timestamp, $end_timestamp, $store_weight_unit );
+		} catch ( \Throwable $e ) {
+			$failure = $e;
+		} finally {
+			// In a finally so a built page can only be served, never turned
+			// into a failure by the drain itself.
+			$stray = Order_Util::discard_buffers_safely( $buffer_level );
+		}
+
+		if ( null !== $failure ) {
+			Order_Util::log_uncontained_export_failure( $failure, $stray );
+			wp_send_json_error( __( 'Error retrieving orders.', 'woocommerce-shipstation-integration' ), 500 );
+
+			return;
+		}
+
+		echo $response_body; //phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped, we want the output to be XML.
+
+		// Both logs run only after the page has gone out, and both are isolated:
+		// a replaced logger that printed would otherwise trail the XML and
+		// break the parse, and one that throws must not disturb a response
+		// already served.
+		if ( '' !== trim( $stray ) ) {
+			Order_Util::log_isolated(
+				'the discarded-output warning',
+				static function () use ( $stray ) {
+					Logger::warning(
+						sprintf(
+							/* translators: %s: the discarded output */
+							__( 'Output emitted during the orders export was discarded to keep the response valid. Another plugin is printing during the export: %s', 'woocommerce-shipstation-integration' ),
+							$stray
+						)
+					);
+				}
+			);
+		}
+
+		/* translators: 1: total count */
+		$this->log( sprintf( __( 'Exported %s orders', 'woocommerce-shipstation-integration' ), $exported ) );
+		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+	}
+
+	/**
+	 * Warn once per page when it carries fewer orders than the query found.
+	 *
+	 * Mirrors the REST surface: a page that shrinks below the reported total is
+	 * the ticket's own symptom, and one line per page keeps a store that
+	 * legitimately excludes orders from writing an entry per order on every
+	 * poll (SHIPSTN-171).
+	 *
+	 * @since 5.3.5
+	 *
+	 * @param int   $filtered_out Orders the export_order filter declined.
+	 * @param int[] $unavailable  Order IDs that produced no exportable order.
+	 * @return void
+	 */
+	private function warn_page_shrank( int $filtered_out, array $unavailable ): void {
+		if ( 0 === $filtered_out && empty( $unavailable ) ) {
+			return;
+		}
+
+		$sample = array_slice( $unavailable, 0, self::MAX_SKIPPED_IDS_LOGGED );
+
+		$message = sprintf(
+			/* translators: 1: orders declined by the filter, 2: orders that could not be loaded, 3: comma-separated order IDs, or a dash */
+			__( 'This orders page is shorter than the query found: %1$d declined by the woocommerce_shipstation_export_order filter, %2$d could not be loaded (IDs: %3$s).', 'woocommerce-shipstation-integration' ),
+			$filtered_out,
+			count( $unavailable ),
+			empty( $sample ) ? '-' : implode( ', ', $sample )
+		);
+
+		Order_Util::log_isolated(
+			'the shrunken-page warning',
+			static function () use ( $message ) {
+				Logger::warning( $message );
+			}
+		);
+	}
+
+	/**
+	 * Build the export page. Runs inside the request() failure boundary.
+	 *
+	 * @since 5.3.5
+	 *
+	 * @param DOMDocument $xml               Response document.
+	 * @param int         $page              Requested page number.
+	 * @param int         $start_timestamp   Window start (Unix timestamp, UTC).
+	 * @param int         $end_timestamp     Window end (Unix timestamp, UTC).
+	 * @param mixed       $store_weight_unit Store weight unit option value.
+	 *
+	 * @return array{0: string, 1: int} The XML response body and the exported-order count.
+	 *
+	 * @throws \RuntimeException When the page cannot be serialized to XML.
+	 */
+	private function process_export( DOMDocument $xml, int $page, int $start_timestamp, int $end_timestamp, $store_weight_unit ): array {
+		$exported = 0;
 
 		$orders_to_export = wc_get_orders(
 			array(
@@ -142,6 +257,8 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 
 		$orders_xml     = $xml->createElement( 'Orders' );
 		$orders_to_mark = array();
+		$filtered_out   = 0;
+		$unavailable    = array();
 
 		try {
 			/**
@@ -159,6 +276,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 				 * @since 4.1.42
 				 */
 				if ( ! apply_filters( 'woocommerce_shipstation_export_order', true, $order_id ) ) {
+					++$filtered_out;
 					continue;
 				}
 
@@ -172,8 +290,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 				$order = apply_filters( 'woocommerce_shipstation_export_get_order', wc_get_order( $order_id ) );
 
 				if ( ! Order_Util::is_wc_order( $order ) ) {
-					/* translators: 1: order id */
-					$this->log( sprintf( __( 'Order %s can not be found.', 'woocommerce-shipstation-integration' ), $order_id ) );
+					$unavailable[] = (int) $order_id;
 					continue;
 				}
 
@@ -516,6 +633,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			}
 
 			Order_Util::mark_orders_exported_bulk( $orders_to_mark );
+			$this->warn_page_shrank( $filtered_out, $unavailable );
 		} finally {
 			// The page's payload is built; keep the notes map from accumulating
 			// across pages when the export runs in a long-lived process. In a
@@ -528,11 +646,14 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		$orders_xml->setAttribute( 'page', $page );
 		$orders_xml->setAttribute( 'pages', ceil( $max_results / WC_SHIPSTATION_EXPORT_LIMIT ) );
 		$xml->appendChild( $orders_xml );
-		echo $xml->saveXML(); //phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped, we want the output to be XML.
 
-		/* translators: 1: total count */
-		$this->log( sprintf( __( 'Exported %s orders', 'woocommerce-shipstation-integration' ), $exported ) );
-		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+		$response_body = $xml->saveXML();
+
+		if ( false === $response_body ) {
+			throw new \RuntimeException( 'The export page could not be serialized to XML.' );
+		}
+
+		return array( $response_body, $exported );
 	}
 
 	/**

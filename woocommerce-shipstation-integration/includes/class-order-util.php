@@ -81,6 +81,44 @@ class Order_Util {
 	private const SYSTEM_NOTE_AUTHOR = 'WooCommerce';
 
 	/**
+	 * Characters of foreign text a single log entry may carry.
+	 *
+	 * @var int
+	 */
+	private const LOG_TEXT_CHAR_BOUND = 500;
+
+	/**
+	 * Bytes of foreign text the sanitising passes will walk.
+	 *
+	 * Four bytes is the widest UTF-8 character, so this cannot cut anything
+	 * that would have survived LOG_TEXT_CHAR_BOUND, and it keeps a dumped
+	 * payload from being scanned in full only to be thrown away.
+	 *
+	 * @var int
+	 */
+	private const LOG_TEXT_BYTE_BOUND = 2048;
+
+	/**
+	 * Bytes of discarded output the drain keeps, per buffer and in total.
+	 *
+	 * @var int
+	 */
+	private const STRAY_OUTPUT_BYTE_BOUND = 4096;
+
+	/**
+	 * Largest buffer the drain will copy out for logging, in bytes.
+	 *
+	 * Copying is what costs: ob_get_contents() materialises the whole buffer,
+	 * doubling peak memory while the request is already failing, and running
+	 * out there is E_ERROR, which nothing can catch (SHIPSTN-171). Only
+	 * STRAY_OUTPUT_BYTE_BOUND of the copy survives anyway, so above this the
+	 * drain logs the size instead.
+	 *
+	 * @var int
+	 */
+	private const STRAY_OUTPUT_CAPTURE_LIMIT = 1048576;
+
+	/**
 	 * Constant variable for admin screen name.
 	 *
 	 * @var string $legacy_order_admin_screen.
@@ -722,7 +760,7 @@ class Order_Util {
 			$target = isset( $args['post_id'] )
 				? 'order ' . (int) $args['post_id']
 				: count( (array) ( $args['post__in'] ?? array() ) ) . ' order(s)';
-			Logger::error( sprintf( 'Order note query failed for %s: %s', $target, $wpdb->last_error ) );
+			self::log_safely( sprintf( 'Order note query failed for %s: %s', $target, self::sanitize_for_log( (string) $wpdb->last_error ) ) );
 
 			// WP_Comment_Query caches its ID list unconditionally, so the failed
 			// query just cached an empty result under the current last-changed
@@ -1058,12 +1096,12 @@ class Order_Util {
 		// orders that already have the marker — the exact symptom this fix targets
 		// (SHIPSTN-139). Skipping this batch is safe: the next poll retries.
 		if ( '' !== $wpdb->last_error ) {
-			Logger::error(
+			self::log_safely(
 				sprintf(
 					'mark_orders_exported_bulk guard SELECT failed for %d order(s) (%s): %s',
 					count( $candidate_ids ),
 					implode( ',', array_slice( $candidate_ids, 0, 20 ) ),
-					$wpdb->last_error
+					self::sanitize_for_log( (string) $wpdb->last_error )
 				)
 			);
 			return;
@@ -1155,13 +1193,13 @@ class Order_Util {
 			);
 
 			if ( false === $delete_result || false === $insert_result ) {
-				Logger::error(
+				self::log_safely(
 					sprintf(
 						'mark_orders_exported_bulk SQL failed on %s (delete=%s, insert=%s): %s',
 						$table,
 						var_export( $delete_result, true ), // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_var_export
 						var_export( $insert_result, true ), // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_var_export
-						$wpdb->last_error
+						self::sanitize_for_log( (string) $wpdb->last_error )
 					)
 				);
 				$all_ok = false;
@@ -1191,8 +1229,13 @@ class Order_Util {
 		// guard closes the common cache-staleness cause and shrinks the window to
 		// truly concurrent polls; fully closing it would need row locking
 		// (GET_LOCK / SELECT ... FOR UPDATE), a heavier change deferred for now.
+		// Contained per order: add_order_note() hands control to third-party
+		// callbacks on woocommerce_order_note_added, and the markers above are
+		// already written for the whole batch. An uncontained throwable on one
+		// order therefore costs every later order its note permanently, because
+		// the next poll's guard sees the marker and skips the batch (SHIPSTN-171).
 		foreach ( $to_mark as $order ) {
-			$order->add_order_note( __( 'Order has been exported to Shipstation', 'woocommerce-shipstation-integration' ) );
+			self::add_order_note_safely( $order, __( 'Order has been exported to Shipstation', 'woocommerce-shipstation-integration' ), false );
 		}
 	}
 
@@ -1262,8 +1305,8 @@ class Order_Util {
 			} catch ( \Throwable $e ) {
 				// \Throwable, not \Exception: a broken service definition surfaces
 				// as \Error, which would otherwise fatal and lose the note.
-				Logger::error(
-					sprintf( 'mark_orders_exported_bulk HPOS cache invalidation failed: %s', $e->getMessage() )
+				self::log_safely(
+					sprintf( 'mark_orders_exported_bulk HPOS cache invalidation failed: %s', self::throwable_message( $e ) )
 				);
 			}
 		}
@@ -1487,11 +1530,11 @@ class Order_Util {
 			// hydrating the refund object (SHIPSTN-164). Retry with one
 			// non-hydrating ID listing plus per-refund reads so a single bad
 			// row degrades its own order instead of fataling the whole batch.
-			Logger::error(
+			self::log_safely(
 				sprintf(
 					'Bulk refund fetch failed while priming refunds for export: %s: %s. Retrying per refund.',
 					get_class( $e ),
-					$e->getMessage()
+					self::throwable_message( $e )
 				)
 			);
 
@@ -1604,11 +1647,11 @@ class Order_Util {
 				)
 			);
 		} catch ( \Throwable $e ) {
-			Logger::error(
+			self::log_safely(
 				sprintf(
 					'Refund IDs for the export batch could not be listed while priming refunds for export; its orders are left unprimed: %s: %s',
 					get_class( $e ),
-					$e->getMessage()
+					self::throwable_message( $e )
 				)
 			);
 
@@ -1619,7 +1662,7 @@ class Order_Util {
 		}
 
 		if ( empty( $refund_ids ) ) {
-			Logger::error(
+			self::log_safely(
 				'Refund IDs for the export batch came back empty after a refund hydration failure; its orders are left unprimed.'
 			);
 
@@ -1633,12 +1676,12 @@ class Order_Util {
 			try {
 				$refund = wc_get_order( $refund_id );
 			} catch ( \Throwable $e ) {
-				Logger::error(
+				self::log_safely(
 					sprintf(
 						'Refund #%d could not be read and was left out of the export: %s: %s',
 						$refund_id,
 						get_class( $e ),
-						$e->getMessage()
+						self::throwable_message( $e )
 					)
 				);
 				continue;
@@ -1647,7 +1690,7 @@ class Order_Util {
 			if ( $refund instanceof \WC_Order_Refund ) {
 				$readable[] = $refund;
 			} else {
-				Logger::error(
+				self::log_safely(
 					sprintf( 'Refund #%d could not be loaded and was left out of the export.', $refund_id )
 				);
 			}
@@ -1699,13 +1742,13 @@ class Order_Util {
 			if ( ! isset( self::$qty_refund_failure_logged[ $order_id ] ) ) {
 				self::$qty_refund_failure_logged[ $order_id ] = true;
 
-				Logger::error(
+				self::log_safely(
 					sprintf(
 						'Refunded quantity for item #%d of order #%d could not be read; exporting the full quantities: %s: %s',
 						$item_id,
 						$order_id,
 						get_class( $e ),
-						$e->getMessage()
+						self::throwable_message( $e )
 					)
 				);
 			}
@@ -1983,7 +2026,7 @@ class Order_Util {
 		// have them. An empty result with no DB error is genuine (a third-party
 		// clause may narrow every order out) and the empty seeds stand.
 		if ( null === $notes ) {
-			Logger::error(
+			self::log_safely(
 				sprintf(
 					'prime_order_notes_for_batch bulk fetch failed for %d order(s) (%s).',
 					count( $order_ids ),
@@ -2087,12 +2130,12 @@ class Order_Util {
 		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 
 		if ( null === $rows || '' !== $wpdb->last_error ) {
-			Logger::error(
+			self::log_safely(
 				sprintf(
 					'count_order_notes_by_group failed for %d order(s) (%s): %s',
 					count( $order_ids ),
 					implode( ',', array_slice( $order_ids, 0, 20 ) ),
-					$wpdb->last_error
+					self::sanitize_for_log( (string) $wpdb->last_error )
 				)
 			);
 			return null;
@@ -2439,9 +2482,11 @@ class Order_Util {
 		// marked processed regardless, so without a log line the missing note
 		// would leave no trace at all.
 		if ( 0 === $note_id && ! $caught ) {
+			// Neutral wording: this helper writes the shipnotify tracking note
+			// and the exported-order note, so the message must not claim either.
 			self::log_safely(
 				/* translators: %d: order ID */
-				sprintf( __( 'No tracking note was recorded for order %d: add_order_note() reported no comment ID.', 'woocommerce-shipstation-integration' ), $order_id ),
+				sprintf( __( 'No order note was recorded for order %d: add_order_note() reported no comment ID.', 'woocommerce-shipstation-integration' ), $order_id ),
 				'warning'
 			);
 		}
@@ -2548,11 +2593,117 @@ class Order_Util {
 	}
 
 	/**
+	 * Log an uncontained export failure without letting the logging throw.
+	 *
+	 * One format for both export surfaces' boundaries (SHIPSTN-171); the
+	 * message is bounded and the write goes through log_safely().
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.5
+	 *
+	 * @param \Throwable $e            The uncontained throwable.
+	 * @param string     $stray_output Output captured before the failure, if any.
+	 * @return void
+	 */
+	public static function log_uncontained_export_failure( \Throwable $e, string $stray_output = '' ): void {
+		$message = sprintf(
+			/* translators: 1) throwable class 2) throwable message 3) file path 4) line number */
+			__( 'The orders export failed before a response could be built: %1$s: %2$s in %3$s:%4$d. No orders were returned to ShipStation.', 'woocommerce-shipstation-integration' ),
+			get_class( $e ),
+			self::throwable_message( $e ),
+			$e->getFile(),
+			$e->getLine()
+		);
+
+		// Whatever the failing code printed on its way out often names it more
+		// precisely than the throwable does.
+		if ( '' !== trim( $stray_output ) ) {
+			$message .= ' ' . sprintf(
+				/* translators: %s: output captured before the failure */
+				__( 'Output captured before the failure: %s', 'woocommerce-shipstation-integration' ),
+				$stray_output
+			);
+		}
+
+		self::log_safely( $message );
+	}
+
+	/**
+	 * Discard the output buffers opened above $level and return what they held.
+	 *
+	 * Both export surfaces buffer their payload phase, because third-party
+	 * output emitted mid-batch commits the response before the endpoint can
+	 * answer: ShipStation then receives a 200 with an unparseable body instead
+	 * of an error it would retry (SHIPSTN-171).
+	 *
+	 * Stops at a buffer PHP cannot pop. One opened without
+	 * PHP_OUTPUT_HANDLER_REMOVABLE keeps its level after ob_end_clean() fails,
+	 * so looping on it never terminates, and the notice that call raises
+	 * becomes a throwable under an error-to-exception handler.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.5
+	 *
+	 * @param int $level Buffer level to drain back down to.
+	 * @return string The discarded output, bounded for logging.
+	 */
+	public static function discard_buffers_safely( int $level ): string {
+		$stray = '';
+
+		// The drain runs in the boundary's finally while the caller may hold
+		// the original export failure: nothing raised here may outrank it, so
+		// any throwable (an ob_* notice under an error-to-exception handler)
+		// ends the drain with what was captured so far.
+		try {
+			while ( ob_get_level() > $level ) {
+				$status = ob_get_status( true );
+				$top    = end( $status );
+
+				// Prepended: buffers pop innermost-first, and the log should
+				// read in the order the output was emitted. Sized before
+				// copying: ob_get_contents() materialises the whole buffer,
+				// and running out of memory here is E_ERROR, which no catch
+				// can contain - so a huge dump is reported, never copied.
+				$size = ob_get_length();
+
+				if ( false !== $size && $size <= self::STRAY_OUTPUT_CAPTURE_LIMIT ) {
+					$stray = self::bound_bytes( (string) ob_get_contents() ) . $stray;
+				} else {
+					$stray = sprintf( '[%d bytes of output discarded, too large to capture] ', (int) $size ) . $stray;
+				}
+
+				$stray = self::bound_bytes( $stray );
+
+				// Unknown flags count as non-removable: leaving a buffer standing
+				// costs an ordering quirk, looping on one costs the request.
+				if ( ! isset( $top['flags'] ) || ! ( $top['flags'] & PHP_OUTPUT_HANDLER_REMOVABLE ) || ! ob_end_clean() ) {
+					// Only a cleanable buffer can be emptied in place; on any
+					// other, ob_clean() raises the same notice ob_end_clean()
+					// just proved this buffer raises.
+					if ( isset( $top['flags'] ) && ( $top['flags'] & PHP_OUTPUT_HANDLER_CLEANABLE ) ) {
+						ob_clean();
+					}
+					break;
+				}
+			}
+		} catch ( \Throwable $e ) {
+			unset( $e );
+		}
+
+		// Keep the markup: it is the evidence naming the plugin that printed it.
+		return self::sanitize_for_log( $stray );
+	}
+
+	/**
 	 * Log from inside a containment path without letting the logging throw.
 	 *
 	 * Logger::error() runs apply_filters( 'woocommerce_logger_log_message' )
 	 * plus every registered log handler - more foreign code - so the catch
-	 * blocks that must not throw route through this instead.
+	 * blocks that must not throw route through this instead. Buffered for the
+	 * same reason log_isolated() is: a replaced logger can print, and this runs
+	 * where a response is half built.
 	 *
 	 * @since 5.3.3
 	 *
@@ -2561,6 +2712,10 @@ class Order_Util {
 	 * @return void
 	 */
 	private static function log_safely( string $message, string $level = 'error' ): void {
+		$buffer_level = ob_get_level();
+
+		ob_start();
+
 		try {
 			if ( 'warning' === $level ) {
 				Logger::warning( $message );
@@ -2571,6 +2726,10 @@ class Order_Util {
 			// The logging pipeline itself failed; there is nothing safer left
 			// to report through.
 			unset( $e );
+		} finally {
+			// A replaced logger can print as well as throw, and this often runs
+			// with a response half built.
+			self::discard_buffers_safely( $buffer_level );
 		}
 	}
 
@@ -2588,11 +2747,139 @@ class Order_Util {
 	 * @return string
 	 */
 	private static function throwable_message( \Throwable $e ): string {
-		$message = (string) $e->getMessage();
+		return self::sanitize_for_log( (string) $e->getMessage() );
+	}
 
-		// Character-based, not byte-based: a byte cut can split a UTF-8
-		// sequence mid-character on its way into a utf8mb4 log column.
-		return mb_strlen( $message ) > 500 ? mb_substr( $message, 0, 500 ) . '...' : $message;
+	/**
+	 * Bound and flatten foreign text for a single log entry.
+	 *
+	 * Control characters are collapsed because a newline ends our entry and
+	 * begins what reads as a separate, genuine one -- timestamp and level
+	 * included, and carrying whatever tail of our own sentence followed the
+	 * interpolation. Foreign text is not guaranteed to be UTF-8, so that pass
+	 * runs without /u -- with it, one stray byte makes preg_replace() return
+	 * null and the entry loses the evidence entirely -- and only the sequences
+	 * that are actually invalid are replaced, because a log handler writing to
+	 * a utf8mb4 column drops the whole row on them while a store's non-Latin
+	 * text still has to stay readable. The cap is character-based, not
+	 * byte-based: a byte cut can split a UTF-8 sequence mid-character.
+	 *
+	 * Every value that reaches a log line from outside this plugin goes through
+	 * here: throwable messages, discarded output, and WP_Error messages from
+	 * third-party query filters. It is called from paths with no containment
+	 * above them, so it never throws.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.5
+	 *
+	 * @param string $text Foreign text.
+	 * @return string
+	 */
+	public static function sanitize_for_log( string $text ): string {
+		try {
+			$bounded = strlen( $text ) > self::LOG_TEXT_BYTE_BOUND;
+			$text    = self::bound_bytes( $text, self::LOG_TEXT_BYTE_BOUND );
+
+			$text = (string) preg_replace( '/[\r\n\t\x00-\x1F\x7F]+/', ' ', $text );
+
+			// NEL, LINE SEPARATOR and PARAGRAPH SEPARATOR, matched as bytes
+			// because the text is not known to be valid UTF-8 yet. A JSON or
+			// JS based log viewer renders them as the break the pass above
+			// exists to close.
+			$text = (string) preg_replace( '/\xC2\x85|\xE2\x80[\xA8\xA9]/', ' ', $text );
+
+			if ( 1 !== preg_match( '//u', $text ) ) {
+				$text = self::replace_invalid_utf8( $text );
+			}
+
+			if ( mb_strlen( $text ) > self::LOG_TEXT_CHAR_BOUND ) {
+				return mb_substr( $text, 0, self::LOG_TEXT_CHAR_BOUND ) . '...';
+			}
+
+			return $bounded ? $text . '...' : $text;
+		} catch ( \Throwable $e ) {
+			// This runs outside every containment path the boundary has, so it
+			// must not be the reason an entry is lost: fall back to the ASCII
+			// skeleton, which still names the plugin and the file.
+			return substr( (string) preg_replace( '/[^\x20-\x7E]/', '?', $text ), 0, self::LOG_TEXT_CHAR_BOUND );
+		}
+	}
+
+	/**
+	 * Replace the invalid sequences in foreign text, keeping the valid ones.
+	 *
+	 * A log handler writing to a utf8mb4 column drops the whole row on an
+	 * invalid byte, so they have to go. Replacing only what is actually
+	 * invalid keeps the evidence readable on a store whose plugins speak
+	 * Japanese, Cyrillic or Greek, where blanking every high byte would
+	 * reduce the entry to question marks.
+	 *
+	 * @param string $text Foreign text that failed the UTF-8 check.
+	 * @return string
+	 */
+	private static function replace_invalid_utf8( string $text ): string {
+		// WordPress polyfills mb_strlen() and mb_substr(), but not the
+		// converter, so a host without mbstring falls back to the blunt pass.
+		if ( ! function_exists( 'mb_convert_encoding' ) || ! function_exists( 'mb_substitute_character' ) ) {
+			return (string) preg_replace( '/[\x80-\xFF]/', '?', $text );
+		}
+
+		$previous = mb_substitute_character();
+		mb_substitute_character( 0x3F );
+
+		try {
+			return (string) mb_convert_encoding( $text, 'UTF-8', 'UTF-8' );
+		} finally {
+			mb_substitute_character( $previous );
+		}
+	}
+
+	/**
+	 * Cut foreign text down to a byte bound, keeping the head.
+	 *
+	 * The head is what names the plugin: the drain prepends outer buffers, and
+	 * a throwable's message leads with its own text.
+	 *
+	 * @param string   $text  Foreign text.
+	 * @param int|null $bound Byte bound; defaults to the drain's.
+	 * @return string
+	 */
+	private static function bound_bytes( string $text, ?int $bound = null ): string {
+		$bound = $bound ?? self::STRAY_OUTPUT_BYTE_BOUND;
+
+		return strlen( $text ) > $bound ? substr( $text, 0, $bound ) : $text;
+	}
+
+	/**
+	 * Run a log write with its output kept out of the response.
+	 *
+	 * Containment covers a logger that throws; the buffer here covers one that
+	 * prints. A write that runs before or after an export boundary puts that
+	 * output in front of or behind the payload, and ShipStation then gets a
+	 * 200 carrying a body no parser accepts - the SHIPSTN-171 shape, from the
+	 * code meant to report it. What the handler printed is dropped rather than
+	 * logged: reporting it means writing through the logger that just
+	 * misbehaved.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.5
+	 *
+	 * @param string   $context  Description of the handoff, used in the log entry.
+	 * @param callable $callback Log write to run.
+	 * @return bool True when the write completed, false when it threw.
+	 */
+	public static function log_isolated( string $context, callable $callback ): bool {
+		$buffer_level = ob_get_level();
+
+		ob_start();
+
+		try {
+			return self::dispatch_safely( $context, $callback );
+		} finally {
+			self::discard_buffers_safely( $buffer_level );
+		}
 	}
 
 	/**
@@ -2601,8 +2888,16 @@ class Order_Util {
 	 * Used where the shipnotify flow gives control away: the Shipment Tracking
 	 * write, the plugin's own public actions, and its public filters (whose
 	 * callers keep the unfiltered value when a callback throws). Failures in
-	 * this plugin's own code are deliberately not routed through here -- those
-	 * should still surface (SHIPSTN-165).
+	 * this plugin's own export and shipnotify logic are deliberately not routed
+	 * through here -- those should still surface (SHIPSTN-165).
+	 *
+	 * The export surfaces also route their log writes through it (SHIPSTN-171).
+	 * A log write reads as this plugin's own code but is not: WooCommerce lets
+	 * any plugin replace the logger through `woocommerce_logging_class`, so the
+	 * write lands in foreign code that can throw. On the XML summary log the
+	 * page has already been echoed by then, so a broken handler must not
+	 * disturb a response that has gone out. Order_Util's own contained logging
+	 * uses log_safely() instead, which is private to this class.
 	 *
 	 * @internal Not a public API: subject to change without a deprecation window.
 	 *

@@ -358,9 +358,17 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/bootstrap.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Ajax_Die_Rig_Trait' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Ajax_Die_Rig_Trait.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Corrupt_Refund_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Corrupt_Refund_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Failure_Boundary_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Failure_Boundary_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Notes_Flush_Test' => array(
 		'version' => 'dev-trunk',
@@ -425,6 +433,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Corrupt_Refund_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Corrupt_Refund_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Failure_Boundary_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Failure_Boundary_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Permission_Test' => array(
 		'version' => 'dev-trunk',
@@ -562,9 +574,21 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Features_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Interface_Only_Logger' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Interface_Only_Logger.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Log_Write_Isolation_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Log_Write_Isolation_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Logger_Capture_Trait' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Logger_Capture_Trait.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Logger_Custom_Logger_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Logger_Custom_Logger_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Non_String_Const_Fixture' => array(
 		'version' => 'dev-trunk',
@@ -577,6 +601,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Corrupt_Refund_Degradation_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Corrupt_Refund_Degradation_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Discard_Buffers_Safely_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Discard_Buffers_Safely_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Get_Checkout_Rate_Code_Test' => array(
 		'version' => 'dev-trunk',
@@ -610,6 +638,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Safe_Qty_Refunded_Log_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Sanitize_For_Log_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Sanitize_For_Log_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Shipment_Processed_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Shipment_Processed_Test.php'
@@ -621,6 +653,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\REST_API_Loader_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/REST_API_Loader_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Simulated_Plugin_Error' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Simulated_Plugin_Error.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Ssl_Proxy_Warning_Render_Test' => array(
 		'version' => 'dev-trunk',

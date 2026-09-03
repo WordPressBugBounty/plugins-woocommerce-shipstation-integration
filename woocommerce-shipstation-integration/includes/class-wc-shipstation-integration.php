@@ -299,9 +299,14 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 */
 	public function update_status_mode( $value ) {
 		if ( ! in_array( $value, array( self::STATUS_MODE_API, self::STATUS_MODE_PLUGIN ), true ) ) {
-			Logger::debug(
-				'update_status_mode ignored invalid value',
-				array( 'value' => (string) $value )
+			Order_Util::log_isolated(
+				'the status-mode log write',
+				static function () use ( $value ) {
+					Logger::debug(
+						'update_status_mode ignored invalid value',
+						array( 'value' => (string) $value )
+					);
+				}
 			);
 			return;
 		}
@@ -628,7 +633,12 @@ class WC_ShipStation_Integration extends WC_Integration {
 
 		$this->refresh_status_mapping();
 
-		Logger::debug( 'Mapping the status for fresh install', $log_info );
+		Order_Util::log_isolated(
+			'the status-mapping log write',
+			static function () use ( $log_info ) {
+				Logger::debug( 'Mapping the status for fresh install', $log_info );
+			}
+		);
 	}
 
 	/**
@@ -734,7 +744,12 @@ class WC_ShipStation_Integration extends WC_Integration {
 
 		$this->refresh_status_mapping();
 
-		Logger::debug( 'Status has been mapped', $log_info );
+		Order_Util::log_isolated(
+			'the status-mapping log write',
+			static function () use ( $log_info ) {
+				Logger::debug( 'Status has been mapped', $log_info );
+			}
+		);
 	}
 
 	/**

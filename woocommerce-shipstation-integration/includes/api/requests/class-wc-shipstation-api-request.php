@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use WooCommerce\Shipping\ShipStation\Logger;
+use WooCommerce\Shipping\ShipStation\Order_Util;
 
 /**
  * WC_Shipstation_API_Request Class
@@ -26,10 +27,21 @@ abstract class WC_Shipstation_API_Request {
 	/**
 	 * Log something.
 	 *
+	 * Isolated because a log write is a handoff: woocommerce_logging_class lets
+	 * any plugin replace the logger, and the dispatcher writes here before the
+	 * export opens its own boundary. A handler that printed put its output in
+	 * front of the XML declaration - a 200 no parser accepts, which is the
+	 * SHIPSTN-171 shape.
+	 *
 	 * @param string $message Log message.
 	 */
 	public function log( $message ) {
-		Logger::debug( (string) $message );
+		Order_Util::log_isolated(
+			'the request log write',
+			static function () use ( $message ) {
+				Logger::debug( (string) $message );
+			}
+		);
 	}
 
 	/**

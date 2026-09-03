@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, woo, automattic
 Requires at least: 7.0
 Tested up to: 7.1
-WC tested up to: 11.0
-WC requires at least: 10.8
+WC tested up to: 11.1
+WC requires at least: 10.9
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.4
+Stable tag: 5.3.5
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,16 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.5 - 2026-09-03 =
+* Fix   - Return a logged error when the orders export fails instead of failing silently, stop counting refunds as orders in the export page totals, and log a warning when ShipStation requests only statuses that are not enabled for export.
+* Fix   - Stop another plugin's output during an orders export from reaching ShipStation as a valid-looking response. The output is kept out of the export, ShipStation receives an error it will retry, and the discarded output is written to the ShipStation log so the plugin responsible can be identified.
+* Fix   - Stop another plugin's error while adding the "Order has been exported to Shipstation" order note from costing the rest of the export batch its notes. The failure is logged with the file and line that caused it.
+* Fix   - Stop another plugin's replacement WooCommerce logger from breaking a ShipStation request. A logger that prints or errors while ShipStation writes to the log can no longer reach the response or end the request, and a custom logger no longer causes a fatal error.
+* Fix   - Stop subscriptions and other non-order records from taking up room on the export page. On stores running WooCommerce Subscriptions, subscriptions on hold or cancelled counted toward the page size and the reported total, so a page could deliver far fewer orders than ShipStation asked for.
+* Tweak - Log entries carrying another plugin's error text are now written as a single entry, so a line break in that text can no longer appear as a separate log line.
+* Tweak - When an export page carries fewer orders than the store found, the ShipStation log now says so once for the page, naming how many were skipped and why, instead of one entry per order.
+* Tweak - WooCommerce 11.1 Compatibility.
 
 = 5.3.4 - 2026-08-24 =
 * Fix   - Stop a corrupted refund record from failing the whole orders export (REST and XML). An unreadable refund is logged and skipped: its order exports without that refund's data (so its item quantities and returns will not reflect the skipped refund) and the rest of the page is unaffected. Shipment notifications count shipped items from the readable refunds; an unreadable refund's quantity is still missing until the record is repaired.

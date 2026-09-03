@@ -16,6 +16,7 @@ use WooCommerce\Shipping\ShipStation\Connection_Log;
 use WooCommerce\Shipping\ShipStation\Features;
 use WooCommerce\Shipping\ShipStation\Logger;
 use WooCommerce\Shipping\ShipStation\Main;
+use WooCommerce\Shipping\ShipStation\Order_Util;
 use WP_Error;
 use WP_REST_Request;
 
@@ -57,7 +58,36 @@ class API_Controller {
 	 * @param string $message Log message.
 	 */
 	public function log( $message ) {
-		Logger::debug( $message );
+		self::log_contained( 'debug', (string) $message );
+	}
+
+	/**
+	 * Write to the log without letting the logger reach the response.
+	 *
+	 * Every write on this controller runs in a permission callback, which is
+	 * ahead of the export boundary. woocommerce_logging_class lets any plugin
+	 * replace the logger, so a handler that printed here put its output in
+	 * front of the payload and a handler that threw killed the request outright
+	 * - both the SHIPSTN-171 shape, from the code meant to report it.
+	 *
+	 * @since 5.3.5
+	 *
+	 * @param string $level   'debug' or 'error'.
+	 * @param string $message Log message.
+	 * @return void
+	 */
+	protected static function log_contained( string $level, string $message ): void {
+		Order_Util::log_isolated(
+			'the REST request log write',
+			static function () use ( $level, $message ) {
+				if ( 'error' === $level ) {
+					Logger::error( $message );
+					return;
+				}
+
+				Logger::debug( $message );
+			}
+		);
 	}
 
 	/**
@@ -112,7 +142,8 @@ class API_Controller {
 		// merchant reports "ShipStation can't connect" — it proves whether the
 		// request is even arriving, and over which transport. Debug-gated, so it
 		// only writes once the merchant enables logging to reproduce.
-		Logger::debug(
+		self::log_contained(
+			'debug',
 			sprintf(
 				'ShipStation REST request: route=%s method=%s transport=%s',
 				$request->get_route(),
@@ -141,7 +172,7 @@ class API_Controller {
 			// cannot leak the request to a pre-existing user identity.
 			$user_id = (int) $row->user_id;
 			if ( $user_id <= 0 || ! get_userdata( $user_id ) ) {
-				Logger::debug( 'ShipStation Basic Auth rejected: api_key_owner_missing' );
+				self::log_contained( 'debug', 'ShipStation Basic Auth rejected: api_key_owner_missing' );
 				return $this->invalid_credentials_error();
 			}
 			if ( get_current_user_id() !== $user_id ) {
@@ -153,7 +184,8 @@ class API_Controller {
 			// so a support engineer can cross-reference without needing the
 			// plaintext key. Gated on the existing Logger flag — no cost when
 			// logging is disabled.
-			Logger::debug(
+			self::log_contained(
+				'debug',
 				sprintf(
 					'ShipStation Basic Auth accepted: key_id=%d truncated_key=%s',
 					(int) $row->key_id,
@@ -247,19 +279,19 @@ class API_Controller {
 			(string) $request->get_header( 'x_shipstation_authorization' )
 		);
 		if ( '' === $consumer_key || '' === $consumer_secret ) {
-			Logger::debug( 'ShipStation Basic Auth rejected: malformed_authorization' );
+			self::log_contained( 'debug', 'ShipStation Basic Auth rejected: malformed_authorization' );
 			return null;
 		}
 
 		$hashed_key = wc_api_hash( $consumer_key );
 		$row        = $this->fetch_api_key_row_by_hash( $hashed_key );
 		if ( null === $row || empty( $row->consumer_secret ) ) {
-			Logger::debug( 'ShipStation Basic Auth rejected: consumer_key_mismatch' );
+			self::log_contained( 'debug', 'ShipStation Basic Auth rejected: consumer_key_mismatch' );
 			return null;
 		}
 
 		if ( ! hash_equals( (string) $row->consumer_secret, $consumer_secret ) ) {
-			Logger::debug( 'ShipStation Basic Auth rejected: consumer_secret_mismatch' );
+			self::log_contained( 'debug', 'ShipStation Basic Auth rejected: consumer_secret_mismatch' );
 			return null;
 		}
 
@@ -327,7 +359,7 @@ class API_Controller {
 		if ( false === $updated ) {
 			// A swallowed failure here re-reports a live key as "never used" in the
 			// settings list (the exact bug SHIPSTN-142 fixes), so leave a breadcrumb.
-			Logger::error( 'Failed to stamp last_access on ShipStation API key row. DB error: ' . (string) $wpdb->last_error );
+			self::log_contained( 'error', 'Failed to stamp last_access on ShipStation API key row. DB error: ' . Order_Util::sanitize_for_log( (string) $wpdb->last_error ) );
 		}
 	}
 
@@ -374,7 +406,8 @@ class API_Controller {
 		// is_ssl() is false so WC never checked the key, painted a green "Active"
 		// pill while every request returned 401 (SHIPSTN-166).
 		if ( ! $served || (int) $row->user_id <= 0 || get_current_user_id() !== (int) $row->user_id ) {
-			Logger::debug(
+			self::log_contained(
+				'debug',
 				sprintf(
 					'ShipStation direct request with plugin key_id=%d was rejected or not authenticated as the key owner; connection not recorded. If the credentials are valid, check for TLS terminated upstream (is_ssl() false).',
 					(int) $row->key_id
@@ -507,7 +540,8 @@ class API_Controller {
 	 * @return void
 	 */
 	private function log_connection( string $transport, int $key_id, string $truncated_key, string $url, WP_REST_Request $request ): void {
-		Logger::debug(
+		self::log_contained(
+			'debug',
 			sprintf(
 				'ShipStation connection: transport=%s key_id=%d truncated_key=%s url=%s route=%s',
 				$transport,
