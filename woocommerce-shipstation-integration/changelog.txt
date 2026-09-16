@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 5.3.6 - 2026-09-16 =
+* Tweak - Update the Jetpack Connection package to 9.1.2.
+
 = 5.3.5 - 2026-09-03 =
 * Fix   - Return a logged error when the orders export fails instead of failing silently, stop counting refunds as orders in the export page totals, and log a warning when ShipStation requests only statuses that are not enabled for export.
 * Fix   - Stop another plugin's output during an orders export from reaching ShipStation as a valid-looking response. The output is kept out of the export, ShipStation receives an error it will retry, and the discarded output is written to the ShipStation log so the plugin responsible can be identified.

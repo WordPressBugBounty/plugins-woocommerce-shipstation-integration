@@ -7,7 +7,7 @@ WC tested up to: 11.1
 WC requires at least: 10.9
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.5
+Stable tag: 5.3.6
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.6 - 2026-09-16 =
+* Tweak - Update the Jetpack Connection package to 9.1.2.
 
 = 5.3.5 - 2026-09-03 =
 * Fix   - Return a logged error when the orders export fails instead of failing silently, stop counting refunds as orders in the export page totals, and log a warning when ShipStation requests only statuses that are not enabled for export.
