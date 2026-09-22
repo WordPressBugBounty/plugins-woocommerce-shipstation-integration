@@ -330,12 +330,12 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 * @return string HTML description (safe to pass to WC_Settings_API field — rendered via wp_kses_post).
 	 */
 	private function get_export_statuses_description(): string {
-		$export_statuses = (array) $this->get_option( 'export_statuses', array() );
+		$export_statuses = array_filter( (array) $this->get_option( 'export_statuses', array() ), 'is_string' );
 
 		$prefix     = self::$wc_status_prefix;
 		$prefix_len = strlen( $prefix );
 		$strip      = function ( $s ) use ( $prefix, $prefix_len ) {
-			return ( 0 === strpos( $s, $prefix ) ) ? substr( $s, $prefix_len ) : $s;
+			return ( is_string( $s ) && 0 === strpos( $s, $prefix ) ) ? substr( $s, $prefix_len ) : $s;
 		};
 
 		$export_slugs = array_map( $strip, $export_statuses );
@@ -402,7 +402,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 			return array();
 		}
 
-		$export_statuses = (array) $this->get_option( 'export_statuses', array() );
+		$export_statuses = array_filter( (array) $this->get_option( 'export_statuses', array() ), 'is_string' );
 		if ( array() === $export_statuses ) {
 			return array();
 		}
@@ -410,7 +410,7 @@ class WC_ShipStation_Integration extends WC_Integration {
 		$prefix     = self::$wc_status_prefix;
 		$prefix_len = strlen( $prefix );
 		$strip      = function ( $s ) use ( $prefix, $prefix_len ) {
-			return ( 0 === strpos( $s, $prefix ) ) ? substr( $s, $prefix_len ) : $s;
+			return ( is_string( $s ) && 0 === strpos( $s, $prefix ) ) ? substr( $s, $prefix_len ) : $s;
 		};
 
 		$mapped_slugs = array();

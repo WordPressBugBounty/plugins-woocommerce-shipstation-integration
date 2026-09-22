@@ -422,6 +422,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Option_Encoding_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Status_Guard_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Status_Guard_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Requests\\WC_Shipstation_API_Export_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Requests/WC_Shipstation_API_Export_Test.php'
@@ -485,6 +489,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Permission_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Permission_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Status_Guard_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Status_Guard_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Test' => array(
 		'version' => 'dev-trunk',
@@ -602,6 +610,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Connection_Log_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Custom_Order_Status_Trait' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Custom_Order_Status_Trait.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Deferred_Shipment_Emails_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Deferred_Shipment_Emails_Test.php'
@@ -621,6 +633,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Interface_Only_Logger' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Interface_Only_Logger.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Legacy_Order_Storage_Trait' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Legacy_Order_Storage_Trait.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Log_Write_Isolation_Test' => array(
 		'version' => 'dev-trunk',
@@ -666,6 +682,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Mark_Orders_Exported_Bulk_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Matchable_Export_Statuses_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Matchable_Export_Statuses_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Note_Tail_Containment_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Note_Tail_Containment_Test.php'
@@ -690,6 +710,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Shipment_Processed_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Warn_Export_Status_Once_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Warn_Export_Status_Once_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Qty_Refund_Memo_Trait' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Qty_Refund_Memo_Trait.php'
@@ -709,6 +733,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Status_Mapping_Mode_UX_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Status_Mapping_Mode_UX_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Status_Warning_Throttle_Trait' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Status_Warning_Throttle_Trait.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Throwing_Refund_Data_Store' => array(
 		'version' => 'dev-trunk',

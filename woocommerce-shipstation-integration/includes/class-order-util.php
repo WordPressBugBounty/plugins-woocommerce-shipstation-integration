@@ -106,6 +106,35 @@ class Order_Util {
 	private const STRAY_OUTPUT_BYTE_BOUND = 4096;
 
 	/**
+	 * Transient prefix for the throttled export-status warnings.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @var string
+	 */
+	public const NO_STATUS_MATCH_TRANSIENT = 'wc_shipstation_no_export_status_match_warned';
+
+	/**
+	 * Entries of a status list a warning will name; the list is stored or
+	 * request text.
+	 *
+	 * @var int
+	 */
+	private const MAX_STATUSES_LOGGED = 20;
+
+	/**
+	 * Distinct throttle keys one warning cause may arm within an hour.
+	 *
+	 * A cause seeded from request data would otherwise mint a transient per
+	 * distinct value an authenticated caller sends.
+	 *
+	 * @var int
+	 */
+	private const MAX_THROTTLE_KEYS_PER_CAUSE = 20;
+
+	/**
 	 * Largest buffer the drain will copy out for logging, in bytes.
 	 *
 	 * Copying is what costs: ob_get_contents() materialises the whole buffer,
@@ -505,6 +534,319 @@ class Order_Util {
 		}
 
 		return '';
+	}
+
+	/**
+	 * The entries of an export-status list that name a registered order status.
+	 *
+	 * Legacy storage drops unregistered statuses, HPOS reads an empty list or
+	 * 'any' as every registered status, and 'all' means no filter: each of
+	 * those exports orders the setting excludes (SHIPSTN-174). Callers query
+	 * only what is kept and answer with an empty page when nothing is.
+	 *
+	 * Registered means listed by wc_get_order_statuses(). On legacy storage
+	 * the status must also be a registered post status: WP_Query builds its
+	 * status clause from get_post_stati() and drops the rest, so a status a
+	 * plugin adds only through the wc_order_statuses filter would pass the
+	 * guard and still select every order.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param array $statuses Statuses, with or without the wc- prefix.
+	 * @return string[] The registered entries, in the form they are registered under (wc- prefixed for every WooCommerce status).
+	 */
+	public static function matchable_export_statuses( array $statuses ): array {
+		return self::partition_export_statuses( $statuses )['kept'];
+	}
+
+	/**
+	 * Split an export-status list into registered entries and skipped ones.
+	 *
+	 * One pass decides both, so a bare slug the stores accept is never
+	 * reported as skipped. Callers that need both halves partition once and
+	 * hand the skipped half to warn_skipped_export_statuses().
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param array $statuses Statuses, with or without the wc- prefix.
+	 * @return array{kept: string[], skipped: string[]} Kept entries as registered, skipped entries as stored.
+	 */
+	public static function partition_export_statuses( array $statuses ): array {
+		$registered = wc_get_order_statuses();
+		$legacy     = ! self::custom_orders_table_usage_is_enabled();
+		$kept       = array();
+		$skipped    = array();
+
+		foreach ( self::string_statuses( $statuses ) as $status ) {
+			// The stores accept either form; the request side carries the prefix.
+			foreach ( array( self::prefixed_status( $status ), $status ) as $candidate ) {
+				if ( ! isset( $registered[ $candidate ] ) ) {
+					continue;
+				}
+
+				if ( $legacy && null === get_post_status_object( $candidate ) ) {
+					continue;
+				}
+
+				$kept[] = $candidate;
+				continue 2;
+			}
+
+			$skipped[] = $status;
+		}
+
+		return array(
+			'kept'    => array_values( array_unique( $kept ) ),
+			'skipped' => array_values( array_unique( $skipped ) ),
+		);
+	}
+
+	/**
+	 * The wc- prefixed form of every string entry of a status list,
+	 * registered or not, so callers can compare a stored list with the
+	 * prefixed statuses a request resolves to.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param array $statuses Statuses, with or without the wc- prefix.
+	 * @return string[]
+	 */
+	public static function prefixed_export_statuses( array $statuses ): array {
+		return array_values( array_unique( array_map( array( __CLASS__, 'prefixed_status' ), self::string_statuses( $statuses ) ) ) );
+	}
+
+	/**
+	 * A status in its wc- prefixed form.
+	 *
+	 * @param string $status Status, with or without the wc- prefix.
+	 * @return string
+	 */
+	private static function prefixed_status( string $status ): string {
+		return 0 === strpos( $status, 'wc-' ) ? $status : 'wc-' . $status;
+	}
+
+	/**
+	 * Keep the non-empty strings of a status list.
+	 *
+	 * @param array $statuses Raw list, possibly from a filter or option write.
+	 * @return string[]
+	 */
+	private static function string_statuses( array $statuses ): array {
+		return array_values(
+			array_filter(
+				$statuses,
+				static function ( $status ): bool {
+					return is_string( $status ) && '' !== $status;
+				}
+			)
+		);
+	}
+
+	/**
+	 * Warn, throttled, that the enabled export statuses select nothing.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param array $statuses The list that cannot match.
+	 * @return void
+	 */
+	public static function warn_export_statuses_cannot_match( array $statuses ): void {
+		$statuses = self::string_statuses( $statuses );
+		sort( $statuses );
+
+		self::warn_export_status_once(
+			'unmatchable|' . implode( ',', $statuses ),
+			sprintf(
+				/* translators: %s: statuses enabled for export, or a dash when none */
+				__( 'The enabled export statuses (%s) cannot match any order on this store. Returning an empty orders page. Review the Export Order Statuses setting.', 'woocommerce-shipstation-integration' ),
+				empty( $statuses ) ? '-' : self::statuses_for_log( $statuses )
+			)
+		);
+	}
+
+	/**
+	 * Warn, throttled, naming enabled export statuses that are not registered.
+	 *
+	 * Their orders are left out while the rest of the list exports, so this
+	 * line is the merchant's only clue. Call it only when some entries are
+	 * kept: an all-skipped list is reported by warn_export_statuses_cannot_match().
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param array $skipped The skipped half of partition_export_statuses().
+	 * @return void
+	 */
+	public static function warn_skipped_export_statuses( array $skipped ): void {
+		$skipped = self::string_statuses( $skipped );
+
+		if ( empty( $skipped ) ) {
+			return;
+		}
+
+		sort( $skipped );
+
+		self::warn_export_status_once(
+			'skipped|' . implode( ',', $skipped ),
+			sprintf(
+				/* translators: %s: comma-separated export statuses that are not registered order statuses */
+				__( 'Orders in these export statuses are not sent to ShipStation because they are not registered order statuses on this store: %s. If a plugin added them, it may be deactivated. Reactivate it, or remove these statuses from the Export Order Statuses setting.', 'woocommerce-shipstation-integration' ),
+				self::statuses_for_log( $skipped )
+			)
+		);
+	}
+
+	/**
+	 * A status list as one bounded, single-line log fragment.
+	 *
+	 * The list is stored or request text this plugin does not control:
+	 * unbounded, a poll could write a large entry, and a newline would read
+	 * as a second entry (SHIPSTN-171).
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param array $statuses Statuses to name.
+	 * @return string
+	 */
+	public static function statuses_for_log( array $statuses ): string {
+		return self::sanitize_for_log( implode( ', ', array_slice( self::string_statuses( $statuses ), 0, self::MAX_STATUSES_LOGGED ) ) );
+	}
+
+	/**
+	 * Log an export-status warning at most once an hour per distinct cause.
+	 *
+	 * Keys share the export-status prefix, so this is not a general throttle.
+	 * The transient arms only after the write lands, so a swallowed warning
+	 * retries on the next poll. Every transient call is contained: their
+	 * hooks are foreign code inside the export boundary (SHIPSTN-171).
+	 *
+	 * The seed is "cause|sorted entries". Each cause may arm
+	 * MAX_THROTTLE_KEYS_PER_CAUSE distinct keys an hour; past that the cause
+	 * shares one key, so a caller varying a request-seeded mapping can neither
+	 * mint a transient per value nor write a log line per poll.
+	 *
+	 * @internal Not a public API: subject to change without a deprecation window.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param string $key_seed Distinct cause, hashed into the transient key.
+	 * @param string $message  Warning message.
+	 * @return void
+	 */
+	public static function warn_export_status_once( string $key_seed, string $message ): void {
+		$throttle_key = self::NO_STATUS_MATCH_TRANSIENT . '_' . md5( $key_seed );
+
+		if ( self::throttle_is_armed( $throttle_key ) ) {
+			return;
+		}
+
+		$cause         = strstr( $key_seed, '|', true );
+		$use_cause_key = false !== $cause && ! self::throttle_budget_allows( $cause );
+
+		if ( $use_cause_key ) {
+			$throttle_key = self::NO_STATUS_MATCH_TRANSIENT . '_' . md5( $cause );
+
+			if ( self::throttle_is_armed( $throttle_key ) ) {
+				return;
+			}
+		}
+
+		$logged = self::log_isolated(
+			'the status warning',
+			static function () use ( $message ) {
+				Logger::warning( $message );
+			}
+		);
+
+		if ( ! $logged ) {
+			return;
+		}
+
+		self::dispatch_safely(
+			'the status-warning throttle write',
+			static function () use ( $throttle_key ) {
+				set_transient( $throttle_key, 1, HOUR_IN_SECONDS );
+			}
+		);
+
+		if ( ! $use_cause_key && false !== $cause ) {
+			self::count_throttle_key( $cause );
+		}
+	}
+
+	/**
+	 * Whether a throttle key is armed. A failed read counts as not armed.
+	 *
+	 * @param string $throttle_key Transient name.
+	 * @return bool
+	 */
+	private static function throttle_is_armed( string $throttle_key ): bool {
+		$armed = false;
+
+		self::dispatch_safely(
+			'the status-warning throttle read',
+			static function () use ( $throttle_key, &$armed ) {
+				$armed = false !== get_transient( $throttle_key );
+			}
+		);
+
+		return $armed;
+	}
+
+	/**
+	 * Whether a cause may still arm a distinct key this hour.
+	 *
+	 * @param string $cause Cause prefix of the seed.
+	 * @return bool
+	 */
+	private static function throttle_budget_allows( string $cause ): bool {
+		$count = 0;
+
+		self::dispatch_safely(
+			'the status-warning key count read',
+			static function () use ( $cause, &$count ) {
+				$count = (int) get_transient( self::throttle_count_key( $cause ) );
+			}
+		);
+
+		return $count < self::MAX_THROTTLE_KEYS_PER_CAUSE;
+	}
+
+	/**
+	 * Record that a cause armed one more distinct key.
+	 *
+	 * @param string $cause Cause prefix of the seed.
+	 * @return void
+	 */
+	private static function count_throttle_key( string $cause ): void {
+		self::dispatch_safely(
+			'the status-warning key count write',
+			static function () use ( $cause ) {
+				$key = self::throttle_count_key( $cause );
+				set_transient( $key, (int) get_transient( $key ) + 1, HOUR_IN_SECONDS );
+			}
+		);
+	}
+
+	/**
+	 * Transient name holding the distinct-key count of a cause.
+	 *
+	 * @param string $cause Cause prefix of the seed.
+	 * @return string
+	 */
+	private static function throttle_count_key( string $cause ): string {
+		return self::NO_STATUS_MATCH_TRANSIENT . '_keys_' . md5( $cause );
 	}
 
 	/**

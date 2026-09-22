@@ -209,6 +209,37 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 	}
 
 	/**
+	 * Surface a failed order query through the request() boundary, which
+	 * answers the endpoint's own 500 and logs the cause. Without this the
+	 * WP_Error a third-party woocommerce_order_query callback can return was
+	 * read as an empty result and served as a 200.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param mixed $result What wc_get_orders() returned.
+	 * @return void
+	 *
+	 * @throws \RuntimeException When the query returned an error instead of a result.
+	 */
+	private function fail_on_query_error( $result ): void {
+		if ( ! is_wp_error( $result ) ) {
+			return;
+		}
+
+		// The message only ever reaches the ShipStation log, and the foreign
+		// text in it is sanitized for that log.
+		// phpcs:disable WordPress.Security.EscapeOutput.ExceptionNotEscaped
+		throw new \RuntimeException(
+			sprintf(
+				/* translators: %s: error message from the order query */
+				__( 'The orders query failed: %s. No orders were returned to ShipStation.', 'woocommerce-shipstation-integration' ),
+				Order_Util::sanitize_for_log( $result->get_error_message() )
+			)
+		);
+		// phpcs:enable WordPress.Security.EscapeOutput.ExceptionNotEscaped
+	}
+
+	/**
 	 * Build the export page. Runs inside the request() failure boundary.
 	 *
 	 * @since 5.3.5
@@ -226,30 +257,46 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 	private function process_export( DOMDocument $xml, int $page, int $start_timestamp, int $end_timestamp, $store_weight_unit ): array {
 		$exported = 0;
 
-		$orders_to_export = wc_get_orders(
-			array(
-				'date_modified' => $start_timestamp . '...' . $end_timestamp,
-				'type'          => 'shop_order',
-				'status'        => WC_ShipStation_Integration::$export_statuses,
-				'return'        => 'ids',
-				'orderby'       => 'date_modified',
-				'order'         => 'DESC',
-				'paged'         => $page,
-				'limit'         => WC_SHIPSTATION_EXPORT_LIMIT,
-			)
-		);
+		$export_statuses = (array) WC_ShipStation_Integration::$export_statuses;
+		$partition       = Order_Util::partition_export_statuses( $export_statuses );
+		$matchable       = $partition['kept'];
 
-		$total_orders_to_export = wc_get_orders(
-			array(
-				'type'          => 'shop_order',
-				'date_modified' => $start_timestamp . '...' . $end_timestamp,
-				'status'        => WC_ShipStation_Integration::$export_statuses,
-				'paginate'      => true,
-				'return'        => 'ids',
-			)
-		);
+		// Query only the registered entries; see Order_Util::matchable_export_statuses().
+		if ( empty( $matchable ) ) {
+			Order_Util::warn_export_statuses_cannot_match( $export_statuses );
 
-		$max_results = $total_orders_to_export->total;
+			$orders_to_export = array();
+			$max_results      = 0;
+		} else {
+			Order_Util::warn_skipped_export_statuses( $partition['skipped'] );
+
+			$orders_to_export = wc_get_orders(
+				array(
+					'date_modified' => $start_timestamp . '...' . $end_timestamp,
+					'type'          => 'shop_order',
+					'status'        => $matchable,
+					'return'        => 'ids',
+					'orderby'       => 'date_modified',
+					'order'         => 'DESC',
+					'paged'         => $page,
+					'limit'         => WC_SHIPSTATION_EXPORT_LIMIT,
+				)
+			);
+			$this->fail_on_query_error( $orders_to_export );
+
+			$total_orders_to_export = wc_get_orders(
+				array(
+					'type'          => 'shop_order',
+					'date_modified' => $start_timestamp . '...' . $end_timestamp,
+					'status'        => $matchable,
+					'paginate'      => true,
+					'return'        => 'ids',
+				)
+			);
+			$this->fail_on_query_error( $total_orders_to_export );
+
+			$max_results = $total_orders_to_export->total;
+		}
 
 		// Must run before the export loop reads refunded quantities; see the
 		// prime_refunds_for_batch() docblock for the rationale (SHIPSTN-164).

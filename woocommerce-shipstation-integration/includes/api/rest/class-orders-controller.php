@@ -53,10 +53,8 @@ class Orders_Controller extends API_Controller {
 	protected string $rest_base = 'orders';
 
 	/**
-	 * Transient prefix throttling the no-matching-status warning.
-	 *
-	 * A hash of the requested status set is appended, so each distinct mapping
-	 * is throttled on its own schedule.
+	 * Alias of Order_Util::NO_STATUS_MATCH_TRANSIENT. The constant was public
+	 * here in 5.3.5, so it stays as a compatibility alias.
 	 *
 	 * @internal Not a public API: subject to change without a deprecation window.
 	 *
@@ -64,17 +62,7 @@ class Orders_Controller extends API_Controller {
 	 *
 	 * @var string
 	 */
-	public const NO_STATUS_MATCH_TRANSIENT = 'wc_shipstation_no_export_status_match_warned';
-
-	/**
-	 * Entries of a requested status mapping a warning will name.
-	 *
-	 * The mapping comes straight from the request, so the log entry and the
-	 * throttle key it seeds both need a bound.
-	 *
-	 * @var int
-	 */
-	private const MAX_MAPPING_ENTRIES_LOGGED = 20;
+	public const NO_STATUS_MATCH_TRANSIENT = Order_Util::NO_STATUS_MATCH_TRANSIENT;
 
 	/**
 	 * Order IDs the shrunken-page warning names.
@@ -574,54 +562,40 @@ class Orders_Controller extends API_Controller {
 	}
 
 	/**
-	 * Log a status-mapping warning at most once an hour per distinct cause.
+	 * The empty page, in the envelope a zero-result query produces.
 	 *
-	 * The transient arms only after the write lands: armed on a contained log
-	 * failure, the misconfiguration's only trace would go silent for an hour
-	 * instead of retrying on the next poll.
+	 * @since 5.3.7
 	 *
-	 * Both transient calls are contained: their pre_transient_* and
-	 * setted_transient hooks are foreign code running inside the export
-	 * boundary, and a path that exists only to produce a diagnostic must not be
-	 * able to turn a healthy export into a 500. A failed read simply warns.
-	 *
-	 * @since 5.3.5
-	 *
-	 * @param string $key_seed Distinct cause, hashed into the transient key.
-	 * @param string $message  Warning message.
-	 * @return void
+	 * @param int $page     Requested page number.
+	 * @param int $per_page Requested page size.
+	 * @return WP_REST_Response
 	 */
-	private function warn_status_mapping_once( string $key_seed, string $message ): void {
-		$throttle_key = self::NO_STATUS_MATCH_TRANSIENT . '_' . md5( $key_seed );
-		$throttled    = false;
+	private function empty_orders_page( int $page, int $per_page ): WP_REST_Response {
+		return new WP_REST_Response( $this->orders_page_data( array(), $page, $per_page, 0, 0 ), 200 );
+	}
 
-		Order_Util::dispatch_safely(
-			'the status-mapping throttle read',
-			static function () use ( $throttle_key, &$throttled ) {
-				$throttled = false !== get_transient( $throttle_key );
-			}
-		);
-
-		if ( $throttled ) {
-			return;
-		}
-
-		$logged = Order_Util::log_isolated(
-			'the status-mapping warning',
-			static function () use ( $message ) {
-				Logger::warning( $message );
-			}
-		);
-
-		if ( ! $logged ) {
-			return;
-		}
-
-		Order_Util::dispatch_safely(
-			'the status-mapping throttle write',
-			static function () use ( $throttle_key ) {
-				set_transient( $throttle_key, 1, HOUR_IN_SECONDS );
-			}
+	/**
+	 * The orders page envelope.
+	 *
+	 * @since 5.3.7
+	 *
+	 * @param array $sales_orders Order payloads.
+	 * @param int   $page         Page number.
+	 * @param int   $per_page     Page size.
+	 * @param int   $total        Total orders reported.
+	 * @param int   $total_pages  Total pages reported.
+	 * @return array
+	 */
+	private function orders_page_data( array $sales_orders, int $page, int $per_page, int $total, int $total_pages ): array {
+		return array(
+			'sales_orders' => $sales_orders,
+			'pagination'   => array(
+				'page'        => $page,
+				'per_page'    => $per_page,
+				'total'       => $total,
+				'total_pages' => $total_pages,
+				'has_more'    => $page < $total_pages,
+			),
 		);
 	}
 
@@ -693,11 +667,23 @@ class Orders_Controller extends API_Controller {
 			}
 		}
 
+		$export_statuses = (array) WC_ShipStation_Integration::$export_statuses;
+		$partition       = Order_Util::partition_export_statuses( $export_statuses );
+		$matchable       = $partition['kept'];
+		$skipped         = $partition['skipped'];
+
+		// Query only the registered entries; see Order_Util::matchable_export_statuses().
+		if ( empty( $matchable ) ) {
+			Order_Util::warn_export_statuses_cannot_match( $export_statuses );
+
+			return $this->empty_orders_page( $page, $per_page );
+		}
+
 		if ( empty( $order_statuses ) ) {
-			// If no statuses are provided, use the default export statuses.
-			// This is to ensure that we always have some statuses to query.
-			// Default export statuses can be defined in the integration class.
-			$order_statuses = WC_ShipStation_Integration::$export_statuses;
+			Order_Util::warn_skipped_export_statuses( $skipped );
+
+			// No statuses in the request: query the matchable export statuses.
+			$order_statuses = $matchable;
 
 			$requested_mapping = array_values( array_filter( $status_mapping, 'is_string' ) );
 
@@ -708,38 +694,32 @@ class Orders_Controller extends API_Controller {
 				// misconfiguration, not an absent parameter: the fallback is
 				// the same, but the log must not claim nothing was asked for
 				// (SHIPSTN-171).
-				// Request data on its way to a log line and a transient key:
-				// bounded so one poll cannot write a large entry, and
-				// sanitised because wc_clean() leaves the non-newline control
-				// characters alone.
+				// Request data on its way to a log line: statuses_for_log()
+				// bounds it so one poll cannot write a large entry, and
+				// sanitises it because wc_clean() leaves the non-newline
+				// control characters alone.
 				sort( $requested_mapping );
-				$reported_mapping = Order_Util::sanitize_for_log(
-					implode( ', ', array_slice( $requested_mapping, 0, self::MAX_MAPPING_ENTRIES_LOGGED ) )
-				);
+				$reported_mapping = Order_Util::statuses_for_log( $requested_mapping );
 
 				// The key seed covers the full sorted set: seeding from the
 				// shortened text would let two mappings that agree on their
 				// first entries share a throttle and hide the second one.
-				$this->warn_status_mapping_once(
+				Order_Util::warn_export_status_once(
 					'unresolved|' . implode( ',', $requested_mapping ),
 					sprintf(
-						/* translators: 1: status mapping requested by ShipStation, 2: statuses enabled for export */
+						/* translators: 1: status mapping requested by ShipStation, 2: export statuses queried instead */
 						__( 'The requested status mapping (%1$s) could not be resolved to any order status. Using the default export statuses (%2$s).', 'woocommerce-shipstation-integration' ),
 						$reported_mapping,
-						implode( ', ', (array) WC_ShipStation_Integration::$export_statuses )
+						Order_Util::statuses_for_log( $matchable )
 					)
 				);
 			}
 		} else {
-			// Only use the order status that has been set from the ShipStation plugin settings.
+			// Query only statuses that are both requested and matchable.
 			$requested_statuses = array_unique( $order_statuses );
-			$order_statuses     = array_intersect(
-				$requested_statuses,
-				WC_ShipStation_Integration::$export_statuses
-			);
+			$order_statuses     = array_intersect( $requested_statuses, $matchable );
 
-			// If no valid order statuses,
-			// use unregistered/invalid order statuses to make sure the WC Order query return 0 order.
+			// Nothing requested can be served, so answer without a query.
 			if ( empty( $order_statuses ) ) {
 				// The one empty page that used to say nothing in the log
 				// (SHIPSTN-171). Throttled per requested status set, not
@@ -748,17 +728,42 @@ class Orders_Controller extends API_Controller {
 				// the other. Sorted so the same set always hashes alike.
 				$throttle_statuses = $requested_statuses;
 				sort( $throttle_statuses );
-				$this->warn_status_mapping_once(
-					implode( ',', $throttle_statuses ),
-					sprintf(
-						/* translators: 1: statuses requested by ShipStation, 2: statuses enabled for export */
-						__( 'The requested status mapping (%1$s) matches no enabled export status (%2$s). Returning an empty orders page - review the Export Order Statuses setting.', 'woocommerce-shipstation-integration' ),
-						implode( ', ', $requested_statuses ),
-						implode( ', ', (array) WC_ShipStation_Integration::$export_statuses )
-					)
-				);
-				$order_statuses = array( 'wc-shipstation-unknown' );
+
+				// Enabled in the setting but no longer registered, typically a
+				// deactivated custom-status plugin: a different cause, so its
+				// own line and throttle, and the skipped-status line stays
+				// quiet because it would name the same statuses. Only when
+				// every requested status is one: otherwise the mismatch line
+				// names the request and the statuses that can be queried, and
+				// the skipped-status line explains the rest.
+				$unregistered = array_intersect( $throttle_statuses, Order_Util::prefixed_export_statuses( $skipped ) );
+
+				if ( ! empty( $unregistered ) && count( $unregistered ) === count( $throttle_statuses ) ) {
+					Order_Util::warn_export_status_once(
+						'unregistered|' . implode( ',', $unregistered ),
+						sprintf(
+							/* translators: %s: statuses enabled for export that are no longer registered */
+							__( 'The requested status mapping resolves only to export statuses that are no longer registered on this store (%s). Returning an empty orders page. The plugin that added these statuses may be deactivated.', 'woocommerce-shipstation-integration' ),
+							Order_Util::statuses_for_log( $unregistered )
+						)
+					);
+				} else {
+					Order_Util::warn_skipped_export_statuses( $skipped );
+					Order_Util::warn_export_status_once(
+						'mismatch|' . implode( ',', $throttle_statuses ),
+						sprintf(
+							/* translators: 1: statuses requested by ShipStation, 2: export statuses that are enabled and registered */
+							__( 'The requested status mapping (%1$s) matches no enabled export status (%2$s). Returning an empty orders page. Review the Export Order Statuses setting.', 'woocommerce-shipstation-integration' ),
+							Order_Util::statuses_for_log( $requested_statuses ),
+							Order_Util::statuses_for_log( $matchable )
+						)
+					);
+				}
+
+				return $this->empty_orders_page( $page, $per_page );
 			}
+
+			Order_Util::warn_skipped_export_statuses( $skipped );
 		}
 
 		$args = array(
@@ -802,21 +807,7 @@ class Orders_Controller extends API_Controller {
 
 		$total_orders = $results->total;
 
-		// Calculate pagination information.
-		$total_pages = $results->max_num_pages;
-		$has_more    = $page < $total_pages;
-
-		// Prepare the response data.
-		$sales_orders_data = array(
-			'sales_orders' => array(),
-			'pagination'   => array(
-				'page'        => $page,
-				'per_page'    => $per_page,
-				'total'       => $total_orders,
-				'total_pages' => $total_pages,
-				'has_more'    => $has_more,
-			),
-		);
+		$sales_orders_data = $this->orders_page_data( array(), $page, $per_page, (int) $total_orders, (int) $results->max_num_pages );
 
 		if ( empty( $results->orders ) || empty( $total_orders ) ) {
 			// No sales orders found, return an empty response.
@@ -980,19 +971,7 @@ class Orders_Controller extends API_Controller {
 
 		$count = count( $sales_orders );
 
-		return new WP_REST_Response(
-			array(
-				'sales_orders' => $sales_orders,
-				'pagination'   => array(
-					'page'        => 1,
-					'per_page'    => $count,
-					'total'       => $count,
-					'total_pages' => 1,
-					'has_more'    => false,
-				),
-			),
-			200
-		);
+		return new WP_REST_Response( $this->orders_page_data( $sales_orders, 1, $count, $count, 1 ), 200 );
 	}
 
 	/**

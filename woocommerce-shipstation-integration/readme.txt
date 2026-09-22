@@ -7,7 +7,7 @@ WC tested up to: 11.1
 WC requires at least: 10.9
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.6
+Stable tag: 5.3.7
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.7 - 2026-09-22 =
+* Fix   - Stop a ShipStation status mapping that matches none of the enabled export statuses from exporting every order on stores using the older post-based order storage. Export settings with no usable order status now return an empty page on both order storages, with a warning in the ShipStation log, instead of the whole store. An enabled export status that is no longer registered on the store is now left out of both exports with a warning in the ShipStation log, where the XML export on high-performance order storage used to include its orders.
 
 = 5.3.6 - 2026-09-16 =
 * Tweak - Update the Jetpack Connection package to 9.1.2.
