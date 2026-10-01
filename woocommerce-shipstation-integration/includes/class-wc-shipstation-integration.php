@@ -17,10 +17,12 @@ use WooCommerce\Shipping\ShipStation\Connection_Log;
 use WooCommerce\Shipping\ShipStation\Features;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound -- Legacy public class name retained for backward compatibility.
 /**
  * WC_ShipStation_Integration Class
  */
 class WC_ShipStation_Integration extends WC_Integration {
+	// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound
 
 	/**
 	 * Authorization key for ShipStation API.

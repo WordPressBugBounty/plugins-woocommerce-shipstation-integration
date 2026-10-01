@@ -48,6 +48,7 @@ final class Features {
 		}
 
 		$stored = Checkout_Rates_Options::get_enabled();
+		// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Public hook name retained for backward compatibility.
 		/**
 		 * Filters whether the Checkout Rates feature is enabled.
 		 *
@@ -60,6 +61,7 @@ final class Features {
 		 *                      merchant-facing checkbox (woocommerce_shipstation_settings['checkout_rates_enabled']).
 		 */
 		return (bool) apply_filters( 'wc_shipstation_checkout_rates_enabled', $stored );
+		// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 	}
 
 	/**
@@ -161,6 +163,7 @@ final class Features {
 			return true;
 		}
 
+		// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Public hook name retained for backward compatibility.
 		/**
 		 * Filters whether the WPCOM-brokered transport is enabled.
 		 *
@@ -168,5 +171,6 @@ final class Features {
 		 * @param bool $enabled Whether the feature is enabled. Default false.
 		 */
 		return (bool) apply_filters( 'wc_shipstation_wpcom_transport_enabled', false );
+		// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 	}
 }

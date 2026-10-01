@@ -1424,6 +1424,7 @@ class Order_Util {
 		$candidate_ids          = array_keys( $candidates );
 		$candidate_placeholders = implode( ',', array_fill( 0, count( $candidate_ids ), '%d' ) );
 
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Reads the exported flag for a batch of orders from whichever meta table the active storage backend uses; core has no batched equivalent. The table and column are literals chosen above and the IDs are bound as %d. Not cached: the value is the guard against re-exporting, so a stale read would duplicate notes.
 		$already_marked = $wpdb->get_col(
 			$wpdb->prepare(
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $read_table and $read_col are string literals; IDs are %d.
@@ -1518,6 +1519,7 @@ class Order_Util {
 			$table      = $target['table'];
 			$object_col = $target['col'];
 
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Clears the exported flag for a batch in one statement; core would need one delete_post_meta() per order. A write has nothing to cache.
 			$delete_result = $wpdb->query(
 				$wpdb->prepare(
 					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $table and $object_col are string literals; $id_placeholders is a list of %d tokens.
@@ -1526,6 +1528,7 @@ class Order_Util {
 				)
 			);
 
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Writes the exported flag for a batch in one statement, paired with the delete above. A write has nothing to cache.
 			$insert_result = $wpdb->query(
 				$wpdb->prepare(
 					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $table and $object_col are string literals; IDs are %d.
@@ -1714,10 +1717,14 @@ class Order_Util {
 		}
 
 		global $wpdb;
-		$ids_sql = implode( ',', $to_prime );
-		$items   = $wpdb->get_results(
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $ids_sql is an absint-sanitized list above.
-			"SELECT order_item_type, order_item_id, order_id, order_item_name FROM {$wpdb->prefix}woocommerce_order_items WHERE order_id IN ( {$ids_sql} ) ORDER BY order_item_id"
+		$id_placeholders = implode( ',', array_fill( 0, count( $to_prime ), '%d' ) );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Primes the order-items cache in one read; this is the cache warm itself, so there is nothing to read it from.
+		$items = $wpdb->get_results(
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- $id_placeholders is a generated run of %d tokens; the IDs themselves are bound below.
+				"SELECT order_item_type, order_item_id, order_id, order_item_name FROM {$wpdb->prefix}woocommerce_order_items WHERE order_id IN ( {$id_placeholders} ) ORDER BY order_item_id",
+				...array_map( 'intval', $to_prime )
+			)
 		);
 
 		$grouped = array_fill_keys( $to_prime, array() );
@@ -2451,6 +2458,7 @@ class Order_Util {
 
 		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- the sniff cannot see that $placeholders and $author_exclusion are implode()-built lists of %d / %s tokens consumed by prepare(); every live value still goes through prepare().
 		// phpcs:disable WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- false positives: the sniff cannot count the spread against the interpolated placeholder lists, nor see the %d / %s tokens inside them. The suppression also silences real mismatches here, so recount by hand when editing this SQL.
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, PluginCheck.Security.DirectDB.UnescapedDBParameter -- Counts order notes per order in one pass; core exposes no aggregate over comments. Every interpolated part is a generated list of %d / %s tokens consumed by prepare(), as the suppressions below record.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT {$wpdb->comments}.comment_post_ID AS order_id,

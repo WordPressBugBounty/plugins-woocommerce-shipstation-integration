@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, woo, automattic
 Requires at least: 7.0
 Tested up to: 7.1
-WC tested up to: 11.1
+WC tested up to: 11.2
 WC requires at least: 10.9
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.7
+Stable tag: 5.3.8
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,11 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.8 - 2026-10-01 =
+* Tweak - WooCommerce 11.2 Compatibility.
+* Tweak - Include composer.json in the plugin package.
+* Tweak - Sanitize the export and shipment notification request values with sanitize_text_field(), and bind the order IDs in the order items cache warm.
 
 = 5.3.7 - 2026-09-22 =
 * Fix   - Stop a ShipStation status mapping that matches none of the enabled export statuses from exporting every order on stores using the older post-based order storage. Export settings with no usable order status now return an empty page on both order storages, with a warning in the ShipStation log, instead of the whole store. An enabled export status that is no longer registered on the store is now left out of both exports with a warning in the ShipStation log, where the XML export on high-performance order storage used to include its orders.

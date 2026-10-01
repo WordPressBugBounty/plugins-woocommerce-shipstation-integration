@@ -196,6 +196,7 @@ class API_Controller {
 			$proxied_row = $row;
 		}
 
+		// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Public hook name retained for backward compatibility.
 		/**
 		 * Filters whether the current user has permissions to manage WooCommerce
 		 * for ShipStation routes.
@@ -205,6 +206,7 @@ class API_Controller {
 		 * @param bool $can_manage_wc Whether the user can manage WooCommerce.
 		 */
 		$can_manage = apply_filters( 'wc_shipstation_user_can_manage_wc', wc_rest_check_manager_permissions( $context, $action ) );
+		// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
 
 		if ( ! $is_proxied ) {
 			// Telemetry only; WC core stays the auth authority here (SHIPSTN-132).
@@ -315,8 +317,7 @@ class API_Controller {
 		}
 
 		global $wpdb;
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- hash-equality lookup, no CRUD equivalent
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.NoCaching -- result memoised in self::$api_key_row_cache for the request lifetime
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Hash-equality lookup against WooCommerce's API keys table, which has no CRUD equivalent; the result is memoised in self::$api_key_row_cache for the request lifetime.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT key_id, user_id, consumer_key, consumer_secret, truncated_key FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_key = %s",

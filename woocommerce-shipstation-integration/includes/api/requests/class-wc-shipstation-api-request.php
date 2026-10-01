@@ -12,10 +12,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 use WooCommerce\Shipping\ShipStation\Logger;
 use WooCommerce\Shipping\ShipStation\Order_Util;
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound -- Legacy public class name retained for backward compatibility.
 /**
  * WC_Shipstation_API_Request Class
  */
 abstract class WC_Shipstation_API_Request {
+	// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound
 
 	/**
 	 * Stores logger class.

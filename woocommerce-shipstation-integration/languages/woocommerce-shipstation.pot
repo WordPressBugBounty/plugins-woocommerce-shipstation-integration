@@ -2,10 +2,10 @@
 # This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: ShipStation for WooCommerce 5.3.7\n"
+"Project-Id-Version: ShipStation for WooCommerce 5.3.8\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/woocommerce-shipstation\n"
-"POT-Creation-Date: 2026-09-22 17:27:26+00:00\n"
+"POT-Creation-Date: 2026-10-01 17:37:01+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -14,17 +14,17 @@ msgstr ""
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "X-Generator: node-wp-i18n 1.2.7\n"
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:116
+#: includes/api/requests/class-wc-shipstation-api-export.php:118
 msgid "Invalid start_date or end_date format."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:143
+#: includes/api/requests/class-wc-shipstation-api-export.php:145
 #: includes/api/rest/class-orders-controller.php:423
 #: includes/api/rest/class-orders-controller.php:805
 msgid "Error retrieving orders."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:161
+#: includes/api/requests/class-wc-shipstation-api-export.php:163
 #: includes/api/rest/class-orders-controller.php:457
 #. translators: %s: the discarded output
 msgid ""
@@ -32,12 +32,12 @@ msgid ""
 "valid. Another plugin is printing during the export: %s"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:170
+#: includes/api/requests/class-wc-shipstation-api-export.php:172
 #. translators: 1: total count
 msgid "Exported %s orders"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:197
+#: includes/api/requests/class-wc-shipstation-api-export.php:199
 #: includes/api/rest/class-orders-controller.php:514
 #. translators: 1: orders declined by the filter, 2: orders that could not be
 #. loaded, 3: comma-separated order IDs, or a dash
@@ -47,103 +47,103 @@ msgid ""
 "%3$s)."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:235
+#: includes/api/requests/class-wc-shipstation-api-export.php:237
 #: includes/api/rest/class-orders-controller.php:792
 #. translators: %s: error message from the order query
 msgid "The orders query failed: %s. No orders were returned to ShipStation."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:653
+#: includes/api/requests/class-wc-shipstation-api-export.php:655
 msgid "Total Discount"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-request.php:62
+#: includes/api/requests/class-wc-shipstation-api-request.php:64
 #. translators: 1: field name
 msgid "Missing required param: %s"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:104
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:106
 msgid "Missing ShipNotify XML input."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:124
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:126
 msgid "Missing SimpleXML extension for parsing ShipStation XML."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:131
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:133
 msgid "ShipNotify XML: "
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:137
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:139
 #. translators: %s is an error message.
 msgid "Cannot parse XML : %s"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:158
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:160
 #. translators: %1$s is order number, %2$d is order id
 msgid "Order number: %1$s or Order ID: %2$d can not be found."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:166
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:168
 #. translators: 1: order id
 msgid "Invalid order ID: %s"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:189
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:191
 #. translators: 1) shipment key 2) order ID
 msgid ""
 "Shipment %1$s was already recorded on order %2$s. Skipping the tracking "
 "note, the Shipment Tracking write and the shipped-item count."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:201
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:203
 #: includes/api/rest/class-orders-controller.php:2321
 msgid "ShipNotify Item: "
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:214
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:216
 #: includes/api/rest/class-orders-controller.php:2434
 #. translators: 1: item name
 msgid "Item %s is not shippable product. Skipping."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:236
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:238
 #: includes/api/rest/class-orders-controller.php:2454
 #. translators: 1) shipped items 2) carrier's name 3) shipped date, 4) tracking
 #. number
 msgid "%1$s shipped via %2$s on %3$s with tracking number %4$s."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:252
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:254
 #: includes/api/rest/class-orders-controller.php:2470
 #. translators: 1) number of shipped items 2) total shipped items 3) order ID
 msgid "Shipped %1$d out of %2$d items in order %3$s"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:283
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:285
 #: includes/api/rest/class-orders-controller.php:2500
 #. translators: 1) carrier's name 2) shipped date, 3) tracking number
 msgid "Items shipped via %1$s on %2$s with tracking number %3$s (Shipstation)."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:290
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:292
 #: includes/api/rest/class-orders-controller.php:2507
 #. translators: 1: order id
 msgid "No items found - shipping entire order %d."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:306
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:308
 #: includes/api/rest/class-orders-controller.php:2523
 msgid "You're using Shipment Tracking < 1.4.0. Please update!"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:436
+#: includes/api/requests/class-wc-shipstation-api-shipnotify.php:438
 #: includes/api/rest/class-orders-controller.php:2654
 #. translators: 1) order ID 2) shipment status
 msgid "Updated order %1$s to status %2$s"
 msgstr ""
 
-#: includes/api/rest/class-api-controller.php:246
+#: includes/api/rest/class-api-controller.php:248
 msgid "Invalid ShipStation credentials."
 msgstr ""
 
@@ -373,7 +373,7 @@ msgid ""
 msgstr ""
 
 #: includes/checkout/class-checkout-rates-options.php:542
-#: includes/class-wc-shipstation-integration.php:1378
+#: includes/class-wc-shipstation-integration.php:1380
 #: vendor/automattic/jetpack-connection/src/class-users-connection-admin.php:90
 msgid "Connected"
 msgstr ""
@@ -414,7 +414,7 @@ msgid ""
 msgstr ""
 
 #: includes/checkout/class-checkout-rates-options.php:583
-#: includes/class-wc-shipstation-integration.php:1548
+#: includes/class-wc-shipstation-integration.php:1550
 msgid "Active"
 msgstr ""
 
@@ -496,36 +496,36 @@ msgstr ""
 msgid "ShipStation Integration"
 msgstr ""
 
-#: includes/class-auth-controller.php:886
-#: includes/class-auth-controller.php:951
+#: includes/class-auth-controller.php:887
+#: includes/class-auth-controller.php:952
 #: includes/class-global-connection-banner.php:139
 msgid "Security check failed"
 msgstr ""
 
-#: includes/class-auth-controller.php:891
-#: includes/class-auth-controller.php:956
+#: includes/class-auth-controller.php:892
+#: includes/class-auth-controller.php:957
 #: includes/class-global-connection-banner.php:144
 #: includes/class-wpcom-connection.php:969
 msgid "You do not have sufficient permissions."
 msgstr ""
 
-#: includes/class-auth-controller.php:897
+#: includes/class-auth-controller.php:898
 msgid ""
 "Another request is currently generating REST API keys. Please refresh the "
 "page and try again."
 msgstr ""
 
-#: includes/class-auth-controller.php:915
+#: includes/class-auth-controller.php:916
 msgid ""
 "Failed to generate API credentials. Please try again or contact your "
 "hosting provider if the issue persists."
 msgstr ""
 
-#: includes/class-auth-controller.php:963
+#: includes/class-auth-controller.php:964
 msgid "This key could not be deleted. It may have been removed already."
 msgstr ""
 
-#: includes/class-auth-controller.php:1209
+#: includes/class-auth-controller.php:1210
 msgid "View ShipStation connection details"
 msgstr ""
 
@@ -615,15 +615,15 @@ msgid ""
 "download %s here."
 msgstr ""
 
-#: includes/class-main.php:558
+#: includes/class-main.php:559
 msgid "Settings"
 msgstr ""
 
-#: includes/class-main.php:559
+#: includes/class-main.php:560
 msgid "Support"
 msgstr ""
 
-#: includes/class-main.php:560
+#: includes/class-main.php:561
 msgid "Docs"
 msgstr ""
 
@@ -648,32 +648,32 @@ msgstr ""
 msgid "WooCommerce"
 msgstr ""
 
-#: includes/class-order-util.php:1580
+#: includes/class-order-util.php:1583
 msgid "Order has been exported to Shipstation"
 msgstr ""
 
-#: includes/class-order-util.php:2806
+#: includes/class-order-util.php:2814
 #. translators: 1) order ID 2) throwable class 3) throwable message 4) file
 #. path 5) line number
 msgid "A callback on the order note for order %1$d failed: %2$s: %3$s in %4$s:%5$d."
 msgstr ""
 
-#: includes/class-order-util.php:2814
+#: includes/class-order-util.php:2822
 msgid "The note was written and the request was not aborted."
 msgstr ""
 
-#: includes/class-order-util.php:2815
+#: includes/class-order-util.php:2823
 msgid "The note was not written and the request was not aborted."
 msgstr ""
 
-#: includes/class-order-util.php:2831
+#: includes/class-order-util.php:2839
 #. translators: %d: order ID
 msgid ""
 "No order note was recorded for order %d: add_order_note() reported no "
 "comment ID."
 msgstr ""
 
-#: includes/class-order-util.php:2914
+#: includes/class-order-util.php:2922
 #. translators: 1) order ID 2) throwable class 3) throwable message 4) file
 #. path 5) line number
 msgid ""
@@ -681,17 +681,17 @@ msgid ""
 "%4$s:%5$d."
 msgstr ""
 
-#: includes/class-order-util.php:2923
+#: includes/class-order-util.php:2931
 #. translators: %s: order status
 msgid "The order reached %s."
 msgstr ""
 
-#: includes/class-order-util.php:2925
+#: includes/class-order-util.php:2933
 #. translators: %s: order status
 msgid "The order did not reach %s."
 msgstr ""
 
-#: includes/class-order-util.php:2954
+#: includes/class-order-util.php:2962
 #. translators: 1) throwable class 2) throwable message 3) file path 4) line
 #. number
 msgid ""
@@ -699,37 +699,37 @@ msgid ""
 "%3$s:%4$d. No orders were returned to ShipStation."
 msgstr ""
 
-#: includes/class-order-util.php:2966
+#: includes/class-order-util.php:2974
 #. translators: %s: output captured before the failure
 msgid "Output captured before the failure: %s"
 msgstr ""
 
-#: includes/class-order-util.php:3261
+#: includes/class-order-util.php:3269
 #. translators: 1) description of the contained handoff 2) throwable class 3)
 #. throwable message 4) file path 5) line number
 msgid "A failure in %1$s was contained: %2$s: %3$s in %4$s:%5$d."
 msgstr ""
 
-#: includes/class-wc-shipstation-api.php:74
+#: includes/class-wc-shipstation-api.php:76
 msgid "Authentication key is required!"
 msgstr ""
 
-#: includes/class-wc-shipstation-api.php:78
+#: includes/class-wc-shipstation-api.php:80
 msgid "Invalid authentication key"
 msgstr ""
 
-#: includes/class-wc-shipstation-api.php:86
-#: includes/class-wc-shipstation-api.php:103
+#: includes/class-wc-shipstation-api.php:88
+#: includes/class-wc-shipstation-api.php:105
 msgid "Invalid request"
 msgstr ""
 
-#: includes/class-wc-shipstation-api.php:99
+#: includes/class-wc-shipstation-api.php:101
 #. translators: 1: query string
 msgid "Input params: %s"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:222
-#: includes/class-wc-shipstation-privacy.php:22
+#: includes/class-wc-shipstation-integration.php:224
+#: includes/class-wc-shipstation-privacy.php:24
 #: includes/data/data-settings.php:55 includes/data/data-settings.php:61
 #: templates/observed-connections.php:258
 #. translators: 1: <strong>ShipStation</strong>, 2: ShipStation mode
@@ -737,85 +737,85 @@ msgstr ""
 msgid "ShipStation"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:223
+#: includes/class-wc-shipstation-integration.php:225
 msgid ""
 "ShipStation allows you to retrieve &amp; manage orders, then print labels "
 "&amp; packing slips with ease."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:351
+#: includes/class-wc-shipstation-integration.php:353
 msgid "Choose which order statuses to export to ShipStation."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:352
+#: includes/class-wc-shipstation-integration.php:354
 msgid "Each selected status must also be mapped to a ShipStation status."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:353
+#: includes/class-wc-shipstation-integration.php:355
 msgid ""
 "Mappings are managed below or in your ShipStation account (depending on "
 "your Status Mapping Mode)."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:356
-#: includes/class-wc-shipstation-integration.php:886
+#: includes/class-wc-shipstation-integration.php:358
+#: includes/class-wc-shipstation-integration.php:888
 msgid "All statuses are selected for export."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:358
-#: includes/class-wc-shipstation-integration.php:885
+#: includes/class-wc-shipstation-integration.php:360
+#: includes/class-wc-shipstation-integration.php:887
 msgid "Excluded from export:"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:370
+#: includes/class-wc-shipstation-integration.php:372
 #. translators: %s: comma-separated list of WC order status names
 msgid ""
 "Selected for export but not mapped to a ShipStation status: %s. Map them "
 "below so their orders are exported correctly."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:461
+#: includes/class-wc-shipstation-integration.php:463
 msgid ""
 "Settings saved, but some selected export statuses are not mapped to a "
 "ShipStation status. Please review the settings below."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:887
+#: includes/class-wc-shipstation-integration.php:889
 msgid "Selected for export but not mapped to a ShipStation status:"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:888
+#: includes/class-wc-shipstation-integration.php:890
 msgid "Map them below so their orders are exported correctly."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:891
+#: includes/class-wc-shipstation-integration.php:893
 msgid ""
 "Delete this API key pair? Any ShipStation connection still using it will "
 "stop authenticating immediately. This cannot be undone."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:892
+#: includes/class-wc-shipstation-integration.php:894
 #: vendor/automattic/jetpack-connection/src/class-connection-notice.php:236
 msgid "Something went wrong. Please try again."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:927
+#: includes/class-wc-shipstation-integration.php:929
 msgid "This feature requires WooCommerce 9.7.0 or higher."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:996
+#: includes/class-wc-shipstation-integration.php:998
 #: includes/data/data-settings.php:169
 msgid "Enable WordPress.com Transport"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1039
+#: includes/class-wc-shipstation-integration.php:1041
 msgid ""
 "Routes ShipStation traffic to your store through WordPress.com, providing a "
 "more stable connection that bypasses firewall and security-plugin blocks "
 "that can intercept direct requests."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1051
+#: includes/class-wc-shipstation-integration.php:1053
 #. translators: %s: the constant or filter name (wrapped in a <code> tag) that
 #. is forcing the setting on.
 msgid ""
@@ -823,7 +823,7 @@ msgid ""
 "cannot be changed here. Remove it to control the setting with the checkbox."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1277
+#: includes/class-wc-shipstation-integration.php:1279
 msgid ""
 "You're turning on WordPress.com Transport. After you save, update your "
 "store connection in ShipStation: set the Store URL to the WordPress.com "
@@ -831,7 +831,7 @@ msgid ""
 "reflect this change."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1279
+#: includes/class-wc-shipstation-integration.php:1281
 msgid ""
 "You're turning off WordPress.com Transport. ShipStation has a recent direct "
 "connection to your store, so it should keep syncing over it — but that "
@@ -841,7 +841,7 @@ msgid ""
 "your site address as the Store URL with current credentials."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1280
+#: includes/class-wc-shipstation-integration.php:1282
 msgid ""
 "You're turning off WordPress.com Transport. After you save, update your "
 "store connection in ShipStation: set the Store URL back to your site "
@@ -849,33 +849,33 @@ msgid ""
 "this change."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1294
+#: includes/class-wc-shipstation-integration.php:1296
 msgid "Credentials"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1308
+#: includes/class-wc-shipstation-integration.php:1310
 msgid "Connections"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1329
+#: includes/class-wc-shipstation-integration.php:1331
 msgid "API Keys"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1381
+#: includes/class-wc-shipstation-integration.php:1383
 msgid "Action needed"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1384
+#: includes/class-wc-shipstation-integration.php:1386
 msgid "Not connected yet"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1413
+#: includes/class-wc-shipstation-integration.php:1415
 msgid ""
 "ShipStation hasn't connected yet. Copy the values below into ShipStation to "
 "finish connecting your store."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1418
+#: includes/class-wc-shipstation-integration.php:1420
 msgid ""
 "ShipStation hasn't synced in over a day, so new orders may not be "
 "importing. Check your ShipStation account dashboard for connection status. "
@@ -883,86 +883,86 @@ msgid ""
 "Credentials section below."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1423
+#: includes/class-wc-shipstation-integration.php:1425
 msgid ""
 "Your store's web address changed, so the route ShipStation saved no longer "
 "reaches it. Update the Store URL in ShipStation to the value below — or "
 "repair the WordPress.com connection."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1424
+#: includes/class-wc-shipstation-integration.php:1426
 msgid "Show the Store URL"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1428
+#: includes/class-wc-shipstation-integration.php:1430
 msgid ""
 "WordPress.com is disconnected, so ShipStation can't reach your store "
 "through it. Reconnect WordPress.com to resume syncing — or switch "
 "ShipStation to your store's direct URL."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1429
+#: includes/class-wc-shipstation-integration.php:1431
 msgid "Reconnect WordPress.com"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1433
+#: includes/class-wc-shipstation-integration.php:1435
 msgid ""
 "WordPress.com transport is off, so your store is turning away the proxied "
 "connection ShipStation still uses. Turn transport back on — or point "
 "ShipStation at your store's direct URL."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1434
+#: includes/class-wc-shipstation-integration.php:1436
 msgid "Review transport setting"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1481
+#: includes/class-wc-shipstation-integration.php:1483
 msgid ""
 "The WordPress.com connection package is unavailable. Reinstall plugin "
 "dependencies to enable this feature."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1549
+#: includes/class-wc-shipstation-integration.php:1551
 msgid "Inactive"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1550
+#: includes/class-wc-shipstation-integration.php:1552
 msgid "Rejected"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1551
+#: includes/class-wc-shipstation-integration.php:1553
 msgid "Disconnected"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1552
+#: includes/class-wc-shipstation-integration.php:1554
 msgid "Mismatch"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1553
+#: includes/class-wc-shipstation-integration.php:1555
 msgid "Deleted"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1554
+#: includes/class-wc-shipstation-integration.php:1556
 msgid "New"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1555
+#: includes/class-wc-shipstation-integration.php:1557
 msgid "Unused"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1753
+#: includes/class-wc-shipstation-integration.php:1755
 msgid "Action failed. Please refresh the page and retry."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1758
+#: includes/class-wc-shipstation-integration.php:1760
 msgid "Cheatin&#8217; huh?"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1780
+#: includes/class-wc-shipstation-integration.php:1782
 msgid "ShipStation logo"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1790
+#: includes/class-wc-shipstation-integration.php:1792
 #. translators: %s: ShipStation URL
 msgid ""
 "To begin printing shipping labels with ShipStation head over to <a "
@@ -970,14 +970,14 @@ msgid ""
 "target=\"_blank\">ShipStation.com</a> and log in or create a new account."
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1805
+#: includes/class-wc-shipstation-integration.php:1807
 msgid ""
 "After logging in, add WooCommerce as a selling channel in ShipStation. Use "
 "your store's Auth Key and REST API credentials to connect. Once connected "
 "you're good to go!"
 msgstr ""
 
-#: includes/class-wc-shipstation-integration.php:1822
+#: includes/class-wc-shipstation-integration.php:1824
 #. translators: %1$s: ShipStation plugin settings URL, %2$s: ShipStation
 #. documentation URL
 msgid ""
@@ -985,15 +985,15 @@ msgid ""
 "and view the documentation <a href=\"%2$s\">here</a>."
 msgstr ""
 
-#: includes/class-wc-shipstation-privacy.php:24
+#: includes/class-wc-shipstation-privacy.php:26
 msgid "WooCommerce ShipStation Order Data"
 msgstr ""
 
-#: includes/class-wc-shipstation-privacy.php:26
+#: includes/class-wc-shipstation-privacy.php:28
 msgid "WooCommerce ShipStation Data"
 msgstr ""
 
-#: includes/class-wc-shipstation-privacy.php:59
+#: includes/class-wc-shipstation-privacy.php:61
 #. translators: 1: URL to documentation
 msgid ""
 "By using this extension, you may be storing personal data or sharing data "
@@ -1002,23 +1002,23 @@ msgid ""
 "policy.</a>"
 msgstr ""
 
-#: includes/class-wc-shipstation-privacy.php:82
+#: includes/class-wc-shipstation-privacy.php:84
 msgid "Orders"
 msgstr ""
 
-#: includes/class-wc-shipstation-privacy.php:86
+#: includes/class-wc-shipstation-privacy.php:88
 msgid "ShipStation tracking provider"
 msgstr ""
 
-#: includes/class-wc-shipstation-privacy.php:90
+#: includes/class-wc-shipstation-privacy.php:92
 msgid "ShipStation tracking number"
 msgstr ""
 
-#: includes/class-wc-shipstation-privacy.php:94
+#: includes/class-wc-shipstation-privacy.php:96
 msgid "ShipStation date shipped"
 msgstr ""
 
-#: includes/class-wc-shipstation-privacy.php:172
+#: includes/class-wc-shipstation-privacy.php:174
 msgid "ShipStation Order Data Erased."
 msgstr ""
 

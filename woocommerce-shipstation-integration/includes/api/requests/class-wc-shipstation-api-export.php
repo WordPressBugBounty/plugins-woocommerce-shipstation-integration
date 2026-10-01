@@ -13,10 +13,12 @@ use WooCommerce\Shipping\ShipStation\Checkout;
 use WooCommerce\Shipping\ShipStation\Logger;
 use WooCommerce\Shipping\ShipStation\Order_Util;
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound -- Legacy public class name retained for backward compatibility.
 /**
  * WC_Shipstation_API_Export Class
  */
 class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
+	// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound
 
 	/**
 	 * Order IDs the shrunken-page warning names.
@@ -103,8 +105,8 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 		$xml               = new DOMDocument( '1.0', 'utf-8' );
 		$xml->formatOutput = true;
 		$page              = max( 1, isset( $_GET['page'] ) ? absint( $_GET['page'] ) : 1 );
-		$raw_start_date    = isset( $_GET['start_date'] ) ? urldecode( wc_clean( wp_unslash( $_GET['start_date'] ) ) ) : false;
-		$raw_end_date      = isset( $_GET['end_date'] ) ? urldecode( wc_clean( wp_unslash( $_GET['end_date'] ) ) ) : false;
+		$raw_start_date    = isset( $_GET['start_date'] ) ? urldecode( sanitize_text_field( wp_unslash( $_GET['start_date'] ) ) ) : false;
+		$raw_end_date      = isset( $_GET['end_date'] ) ? urldecode( sanitize_text_field( wp_unslash( $_GET['end_date'] ) ) ) : false;
 		$store_weight_unit = get_option( 'woocommerce_weight_unit' );
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 

@@ -11,10 +11,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 use WooCommerce\Shipping\ShipStation\Order_Util;
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound -- Legacy public class name retained for backward compatibility.
 /**
  * WC_Shipstation_API_Shipnotify Class
  */
 class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
+	// phpcs:enable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound
 
 	/**
 	 * Constructor.
@@ -124,7 +126,7 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 			$this->log( __( 'Missing SimpleXML extension for parsing ShipStation XML.', 'woocommerce-shipstation-integration' ) );
 		}
 
-		$order_number = isset( $_GET['order_number'] ) ? wc_clean( wp_unslash( $_GET['order_number'] ) ) : '0';
+		$order_number = isset( $_GET['order_number'] ) ? sanitize_text_field( wp_unslash( $_GET['order_number'] ) ) : '0';
 
 		// Try to parse XML first since it can contain the real OrderID.
 		if ( $can_parse_xml ) {
@@ -149,8 +151,8 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 
 		// Get real order ID from XML otherwise try to convert it from the order number.
 		$order_id        = ! $xml_order_id ? $this->get_order_id( $order_number ) : $xml_order_id;
-		$tracking_number = empty( $_GET['tracking_number'] ) ? '' : wc_clean( wp_unslash( $_GET['tracking_number'] ) );
-		$carrier         = empty( $_GET['carrier'] ) ? '' : wc_clean( wp_unslash( $_GET['carrier'] ) );
+		$tracking_number = empty( $_GET['tracking_number'] ) ? '' : sanitize_text_field( wp_unslash( $_GET['tracking_number'] ) );
+		$carrier         = empty( $_GET['carrier'] ) ? '' : sanitize_text_field( wp_unslash( $_GET['carrier'] ) );
 		$order           = wc_get_order( $order_id );
 
 		if ( false === $order || ! is_object( $order ) ) {

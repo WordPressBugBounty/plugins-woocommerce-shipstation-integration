@@ -104,6 +104,7 @@ class Main {
 		}
 
 		if ( ! defined( 'WC_SHIPSTATION_EXPORT_LIMIT' ) ) {
+			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- Legacy public constant name retained for backward compatibility.
 			define( 'WC_SHIPSTATION_EXPORT_LIMIT', 100 );
 		}
 
