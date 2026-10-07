@@ -880,6 +880,7 @@ class Orders_Controller extends API_Controller {
 			// building one order's payload throws.
 			Order_Util::flush_order_notes_cache();
 			Order_Util::flush_qty_refund_failure_log();
+			Order_Util::flush_degraded_refund_primes();
 		}
 
 		return new WP_REST_Response( $sales_orders_data, 200 );
@@ -967,6 +968,7 @@ class Orders_Controller extends API_Controller {
 			// building one order's payload throws.
 			Order_Util::flush_order_notes_cache();
 			Order_Util::flush_qty_refund_failure_log();
+			Order_Util::flush_degraded_refund_primes();
 		}
 
 		$count = count( $sales_orders );
@@ -2367,6 +2369,7 @@ class Orders_Controller extends API_Controller {
 		// memo like the export loops do, so a later notification for the same
 		// order in a long-lived process still logs the recurring failure.
 		Order_Util::flush_qty_refund_failure_log();
+		Order_Util::flush_degraded_refund_primes();
 
 		return new WP_REST_Response(
 			array(

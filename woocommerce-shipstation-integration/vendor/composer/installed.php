@@ -3,7 +3,7 @@
         'name' => 'woocommerce/woocommerce-shipstation',
         'pretty_version' => 'dev-trunk',
         'version' => 'dev-trunk',
-        'reference' => 'f8b856c30ca85cb8f739e9a0f514c4e5fbf1b8bc',
+        'reference' => '157d7f4ae6801fa08f01bd8fbfc04fe7cbde038a',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -112,7 +112,7 @@
         'woocommerce/woocommerce-shipstation' => array(
             'pretty_version' => 'dev-trunk',
             'version' => 'dev-trunk',
-            'reference' => 'f8b856c30ca85cb8f739e9a0f514c4e5fbf1b8bc',
+            'reference' => '157d7f4ae6801fa08f01bd8fbfc04fe7cbde038a',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

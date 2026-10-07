@@ -7,7 +7,7 @@ WC tested up to: 11.2
 WC requires at least: 10.9
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.8
+Stable tag: 5.3.9
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,12 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.3.9 - 2026-10-07 =
+* Add   - Filter woocommerce_shipstation_checkout_rates_is_checkout_context, which lets other checkout requests receive ShipStation rates.
+* Fix   - Return ShipStation checkout rates in WooCommerce PayPal Payments checkout requests, where paying could fail with "No shipping method has been selected".
+* Fix   - Keep the shipping rate the customer chose when ShipStation quotes the rates again during checkout, including when the services come back in a different order, instead of switching the order to the first rate.
+* Fix   - Clear an incomplete refund list from the object cache after an orders export or shipment notification skips a refund it cannot read.
 
 = 5.3.8 - 2026-10-01 =
 * Tweak - WooCommerce 11.2 Compatibility.

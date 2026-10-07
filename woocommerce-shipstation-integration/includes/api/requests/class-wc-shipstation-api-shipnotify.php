@@ -462,6 +462,7 @@ class WC_Shipstation_API_Shipnotify extends WC_Shipstation_API_Request {
 		// the export loops do, so a later notification for the same order in a
 		// long-lived process still logs the recurring failure.
 		Order_Util::flush_qty_refund_failure_log();
+		Order_Util::flush_degraded_refund_primes();
 
 		status_header( 200 );
 		// phpcs:enable WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase

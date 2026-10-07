@@ -1770,6 +1770,8 @@ class Order_Util {
 	 * The `'orders'` group can be persistent, so a degraded entry written here
 	 * stays visible to every later reader - other requests included - until an
 	 * order write rotates the group prefix (`wc_delete_shop_order_transients()`).
+	 * The keys written on the degraded path are recorded so
+	 * flush_degraded_refund_primes() can drop them at the end of the request.
 	 *
 	 * Fetches every refund whose parent is in the batch with a single
 	 * `wc_get_orders()` call (HPOS aliases `post_parent__in` to
@@ -1780,9 +1782,11 @@ class Order_Util {
 	 * and skipped instead of fataling the batch: its parent order is primed
 	 * with its readable refunds only, so downstream `get_refunds()` callers
 	 * (and core's own prime, which would otherwise re-fetch and hit the same
-	 * fatal) never touch the bad row. Call this BEFORE hydrating the batch's
-	 * order objects: a `wc_get_orders()` fetch of shop_orders runs core's
-	 * refund prime internally, and only a warm cache keeps it from throwing.
+	 * fatal) do not touch the bad row for the rest of the request;
+	 * flush_degraded_refund_primes() then leaves the next reader to query
+	 * again. Call this BEFORE hydrating the batch's order objects: a
+	 * `wc_get_orders()` fetch of shop_orders runs core's refund prime
+	 * internally, and only a warm cache keeps it from throwing.
 	 *
 	 * A fetch that returns zero refunds for the whole batch writes nothing:
 	 * that result cannot be told apart from a query failure that HPOS
@@ -1800,6 +1804,8 @@ class Order_Util {
 	 *              per-refund reads when the bulk fetch throws, and skips the
 	 *              write entirely when the fetch reports no refunds for the
 	 *              batch.
+	 * @since 5.3.9 Records the keys written on the degraded path for
+	 *              flush_degraded_refund_primes().
 	 *
 	 * @see \WC_Order::get_refunds() Reads the cache keys primed here.
 	 * @see \Abstract_WC_Order_Data_Store_CPT::prime_refund_caches_for_orders() Core's
@@ -1853,6 +1859,8 @@ class Order_Util {
 			return;
 		}
 
+		$degraded = false;
+
 		try {
 			$refunds = wc_get_orders(
 				array(
@@ -1897,6 +1905,8 @@ class Order_Util {
 			if ( empty( $to_prime ) ) {
 				return;
 			}
+
+			$degraded = true;
 		}
 
 		$grouped = array_fill_keys( $to_prime, array() );
@@ -1917,9 +1927,81 @@ class Order_Util {
 			}
 
 			wp_cache_set( $id_keys[ $id ], $refund_ids, 'orders' );
+			if ( $degraded ) {
+				self::record_degraded_refund_key( $id_keys[ $id ] );
+			}
 			if ( $prime_legacy ) {
 				wp_cache_set( $object_keys[ $id ], $list, 'orders' );
+				if ( $degraded ) {
+					self::record_degraded_refund_key( $object_keys[ $id ] );
+				}
 			}
+		}
+	}
+
+	/**
+	 * Cache keys written by prime_refunds_for_batch() on its degraded path.
+	 *
+	 * @var string[]
+	 */
+	private static array $degraded_refund_keys = array();
+
+	/**
+	 * Remember a key written on the degraded path.
+	 *
+	 * The first key also arms a shutdown flush, so an uncaught throw or a
+	 * fatal before the surface's own flush call cannot leave the key behind.
+	 * The exact key is kept rather than the order ID because an order save
+	 * mid-batch rotates the group prefix.
+	 *
+	 * @since 5.3.9
+	 *
+	 * @param string $key Cache key in the 'orders' group.
+	 * @return void
+	 */
+	private static function record_degraded_refund_key( string $key ): void {
+		if ( empty( self::$degraded_refund_keys ) ) {
+			add_action( 'shutdown', array( __CLASS__, 'flush_degraded_refund_primes' ) );
+		}
+
+		self::$degraded_refund_keys[] = $key;
+	}
+
+	/**
+	 * Drop the refund cache entries written on the degraded prime path.
+	 *
+	 * A list primed after a hydration failure leaves out the refunds that could
+	 * not be read, under the key `WC_Order::get_refunds()` reads in the shared,
+	 * possibly persistent `'orders'` group. Every other reader would see the
+	 * order with fewer refunds than it has until an order save rotates the
+	 * prefix (SHIPSTN-168). Called at the end of every export page and
+	 * shipnotify request, and once more at shutdown when a degraded prime ran;
+	 * a clean prime records no keys, so it costs nothing there. A concurrent
+	 * request can still read the list before this runs. Each delete is
+	 * contained on its own: a throwing object cache must not turn a built
+	 * page into a 500 from inside a finally, nor keep the other keys.
+	 *
+	 * @since 5.3.9
+	 *
+	 * @return void
+	 */
+	public static function flush_degraded_refund_primes(): void {
+		$keys                       = array_unique( self::$degraded_refund_keys );
+		self::$degraded_refund_keys = array();
+		remove_action( 'shutdown', array( __CLASS__, 'flush_degraded_refund_primes' ) );
+
+		if ( empty( $keys ) ) {
+			return;
+		}
+
+		// One dispatch per key, so a delete that throws does not keep the rest.
+		foreach ( $keys as $key ) {
+			self::dispatch_safely(
+				'the degraded refund cache flush',
+				static function () use ( $key ) {
+					wp_cache_delete( $key, 'orders' );
+				}
+			);
 		}
 	}
 

@@ -690,6 +690,7 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 			// leave the map populated, matching the REST controller.
 			Order_Util::flush_order_notes_cache();
 			Order_Util::flush_qty_refund_failure_log();
+			Order_Util::flush_degraded_refund_primes();
 		}
 
 		$orders_xml->setAttribute( 'page', $page );

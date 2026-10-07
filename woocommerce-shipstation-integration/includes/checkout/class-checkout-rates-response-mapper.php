@@ -43,7 +43,8 @@ final class Checkout_Rates_Response_Mapper {
 			? (string) $response['quote_id']
 			: '';
 
-		$rates = array();
+		$rates    = array();
+		$transits = array();
 
 		foreach ( $quotes as $quote ) {
 			if ( ! is_array( $quote ) ) {
@@ -53,11 +54,137 @@ final class Checkout_Rates_Response_Mapper {
 			$mapped = $this->map_quote( $quote, $quote_id );
 
 			if ( null !== $mapped ) {
-				$rates[] = $mapped;
+				$rates[]    = $mapped;
+				$transits[] = isset( $quote['transit_time'] ) && is_array( $quote['transit_time'] ) ? $quote['transit_time'] : array();
+			}
+		}
+
+		return $this->make_ids_unique( $rates, $transits );
+	}
+
+	/**
+	 * Get a transit time in days.
+	 *
+	 * @since 5.3.9
+	 *
+	 * @param array $transit_time The quote's transit_time entry.
+	 *
+	 * @return float|null Days, or null when there is no numeric duration.
+	 */
+	private function transit_days( array $transit_time ): ?float {
+		if ( ! isset( $transit_time['duration'] ) || ! is_numeric( $transit_time['duration'] ) ) {
+			return null;
+		}
+
+		$duration = (float) $transit_time['duration'];
+
+		switch ( $this->transit_units( $transit_time ) ) {
+			case 'hour':
+			case 'hours':
+				return $duration / 24;
+			case 'week':
+			case 'weeks':
+				return $duration * 7;
+			default:
+				// Days, business days, or a missing or unknown unit.
+				return $duration;
+		}
+	}
+
+	/**
+	 * Get a transit time's unit in lowercase, with spaces for underscores.
+	 *
+	 * @since 5.3.9
+	 *
+	 * @param array $transit_time The quote's transit_time entry.
+	 *
+	 * @return string The unit, or an empty string when there is none.
+	 */
+	private function transit_units( array $transit_time ): string {
+		return isset( $transit_time['units'] ) && is_string( $transit_time['units'] )
+			? strtolower( str_replace( '_', ' ', trim( $transit_time['units'] ) ) )
+			: '';
+	}
+
+	/**
+	 * Same-name quotes get __2, __3, ordered by cost then transit time.
+	 *
+	 * @since 5.3.9
+	 *
+	 * @param array $rates    Mapped rates, with ids from their service names.
+	 * @param array $transits Each rate's transit_time entry, by the same index.
+	 *
+	 * @return array The same rates with unique ids.
+	 */
+	private function make_ids_unique( array $rates, array $transits ): array {
+		$groups = array();
+		foreach ( $rates as $index => $rate ) {
+			$groups[ $rate['id'] ][] = $index;
+		}
+
+		$taken = array_fill_keys( array_keys( $groups ), true );
+
+		foreach ( $groups as $base_id => $indexes ) {
+			if ( count( $indexes ) < 2 ) {
+				continue;
+			}
+
+			// Sort on API values, not translated text, so every locale agrees.
+			$keys = array();
+			foreach ( $indexes as $index ) {
+				$keys[ $index ] = array(
+					$rates[ $index ]['cost'],
+					// A missing duration sorts last.
+					$this->transit_days( $transits[ $index ] ) ?? INF,
+					$this->transit_units( $transits[ $index ] ),
+					$rates[ $index ]['description'] ?? '',
+					// usort() is not stable before PHP 8.
+					$index,
+				);
+			}
+
+			usort(
+				$indexes,
+				static function ( int $a, int $b ) use ( $keys ): int {
+					return $keys[ $a ] <=> $keys[ $b ];
+				}
+			);
+
+			$suffix = 1;
+			foreach ( array_slice( $indexes, 1 ) as $index ) {
+				do {
+					++$suffix;
+					$id = $base_id . '__' . $suffix;
+				} while ( isset( $taken[ $id ] ) );
+
+				$taken[ $id ]          = true;
+				$rates[ $index ]['id'] = $id;
 			}
 		}
 
 		return $rates;
+	}
+
+	/**
+	 * Rate ids come from the service name, so they survive a new quote.
+	 *
+	 * @since 5.3.9
+	 *
+	 * @param string $label Quote display name.
+	 *
+	 * @return string
+	 */
+	private function rate_id( string $label ): string {
+		// Fixed locale and no filters, so a service keeps one id everywhere.
+		// Underscores become dashes, so no slug can contain the "__" suffix.
+		$key = sanitize_title_with_dashes( remove_accents( $label, 'en_US' ), '', 'save' );
+		$key = trim( (string) preg_replace( '/-+/', '-', (string) preg_replace( '/[^a-z0-9-]/', '-', $key ) ), '-' );
+
+		if ( '' === $key ) {
+			$key = substr( md5( $label ), 0, 12 );
+		}
+
+		return 'shipstation_' . $key;
 	}
 
 	/**
@@ -109,7 +236,7 @@ final class Checkout_Rates_Response_Mapper {
 		}
 
 		$rate = array(
-			'id'        => 'shipstation_' . sanitize_key( $code ),
+			'id'        => $this->rate_id( $label ),
 			'label'     => $label,
 			'cost'      => (float) $quote['cost']['amount'],
 			'meta_data' => array(
@@ -163,9 +290,7 @@ final class Checkout_Rates_Response_Mapper {
 			return '';
 		}
 
-		$units = isset( $transit_time['units'] ) && is_string( $transit_time['units'] )
-			? strtolower( str_replace( '_', ' ', trim( $transit_time['units'] ) ) )
-			: '';
+		$units = $this->transit_units( $transit_time );
 
 		switch ( $units ) {
 			case '':

@@ -13,9 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 use Automattic\WooCommerce\Utilities\FeaturesUtil;
+use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Chosen_Rate;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Classic_Label;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Shipping_Method;
+use WooCommerce\Shipping\ShipStation\Integrations\PayPal_Payments_Integration;
 use WooCommerce\Shipping\ShipStation\REST_API_Loader;
 use WC_ShipStation_Privacy;
 use WC_Shipstation_API;
@@ -179,6 +181,13 @@ class Main {
 		// dropped on sites that enable the feature flag after this runs (e.g. a theme's
 		// functions.php); the callback no-ops for non-ShipStation rates.
 		Checkout_Rates_Classic_Label::register();
+
+		// Keep the customer's rate when a new quote only reorders the rates.
+		Checkout_Rates_Chosen_Rate::register();
+
+		// Give PayPal Payments checkout requests ShipStation rates.
+		// Always registered: its callbacks do nothing outside PayPal requests.
+		PayPal_Payments_Integration::register();
 	}
 
 	/**
@@ -429,6 +438,12 @@ class Main {
 		// side-effect-free (no WC_Shipping_Method parent), so it loads unconditionally and
 		// its filter callback stays resolvable no matter when the feature flag is toggled.
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-classic-label.php';
+
+		// Keeps the chosen rate across reordered quotes. Inert until registered.
+		include_once WC_SHIPSTATION_ABSPATH . 'includes/checkout/class-checkout-rates-chosen-rate.php';
+
+		// Third-party plugin integrations. Inert until registered.
+		include_once WC_SHIPSTATION_ABSPATH . 'includes/integrations/class-paypal-payments-integration.php';
 
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-privacy.php';
 

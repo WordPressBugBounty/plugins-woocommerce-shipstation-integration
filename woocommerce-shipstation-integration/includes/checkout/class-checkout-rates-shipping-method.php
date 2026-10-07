@@ -180,10 +180,31 @@ class Checkout_Rates_Shipping_Method extends \WC_Shipping_Method {
 	 *
 	 * @since 5.0.8
 	 * @since 5.3.0 Promoted to public static for reuse by the rate-cache guard.
+	 * @since 5.3.9 Filterable.
 	 *
 	 * @return bool
 	 */
 	public static function is_checkout_context(): bool {
+		/**
+		 * Filters whether this request may fetch ShipStation checkout rates.
+		 *
+		 * The answer also decides whether the request's rates stay in the session.
+		 *
+		 * @since 5.3.9
+		 *
+		 * @param bool $is_checkout_context Whether this is a cart or checkout request.
+		 */
+		return (bool) apply_filters( 'woocommerce_shipstation_checkout_rates_is_checkout_context', self::request_is_checkout_context() );
+	}
+
+	/**
+	 * Whether the request is a cart or checkout request, before the filter.
+	 *
+	 * @since 5.3.9
+	 *
+	 * @return bool
+	 */
+	private static function request_is_checkout_context(): bool {
 		// Whitelists the WC surfaces that actually present shipping rates to the customer
 		// (cart and checkout, classic or block) so background callers like add-to-cart
 		// fragment refreshes and unrelated AJAX hits don't trigger outbound rate requests.
