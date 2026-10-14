@@ -2,10 +2,10 @@
 # This file is distributed under the GPLv3.
 msgid ""
 msgstr ""
-"Project-Id-Version: ShipStation for WooCommerce 5.3.9\n"
+"Project-Id-Version: ShipStation for WooCommerce 5.4.0\n"
 "Report-Msgid-Bugs-To: "
 "https://wordpress.org/support/plugin/woocommerce-shipstation\n"
-"POT-Creation-Date: 2026-10-07 10:59:23+00:00\n"
+"POT-Creation-Date: 2026-10-14 16:04:32+00:00\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -14,31 +14,31 @@ msgstr ""
 "Language-Team: LANGUAGE <LL@li.org>\n"
 "X-Generator: node-wp-i18n 1.2.7\n"
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:118
+#: includes/api/requests/class-wc-shipstation-api-export.php:119
 msgid "Invalid start_date or end_date format."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:145
-#: includes/api/rest/class-orders-controller.php:423
-#: includes/api/rest/class-orders-controller.php:805
+#: includes/api/requests/class-wc-shipstation-api-export.php:146
+#: includes/api/rest/class-orders-controller.php:425
+#: includes/api/rest/class-orders-controller.php:807
 msgid "Error retrieving orders."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:163
-#: includes/api/rest/class-orders-controller.php:457
+#: includes/api/requests/class-wc-shipstation-api-export.php:164
+#: includes/api/rest/class-orders-controller.php:459
 #. translators: %s: the discarded output
 msgid ""
 "Output emitted during the orders export was discarded to keep the response "
 "valid. Another plugin is printing during the export: %s"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:172
+#: includes/api/requests/class-wc-shipstation-api-export.php:173
 #. translators: 1: total count
 msgid "Exported %s orders"
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:199
-#: includes/api/rest/class-orders-controller.php:514
+#: includes/api/requests/class-wc-shipstation-api-export.php:200
+#: includes/api/rest/class-orders-controller.php:516
 #. translators: 1: orders declined by the filter, 2: orders that could not be
 #. loaded, 3: comma-separated order IDs, or a dash
 msgid ""
@@ -47,13 +47,13 @@ msgid ""
 "%3$s)."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:237
-#: includes/api/rest/class-orders-controller.php:792
+#: includes/api/requests/class-wc-shipstation-api-export.php:238
+#: includes/api/rest/class-orders-controller.php:794
 #. translators: %s: error message from the order query
 msgid "The orders query failed: %s. No orders were returned to ShipStation."
 msgstr ""
 
-#: includes/api/requests/class-wc-shipstation-api-export.php:655
+#: includes/api/requests/class-wc-shipstation-api-export.php:661
 msgid "Total Discount"
 msgstr ""
 
@@ -97,48 +97,48 @@ msgid ""
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:203
-#: includes/api/rest/class-orders-controller.php:2323
+#: includes/api/rest/class-orders-controller.php:2330
 msgid "ShipNotify Item: "
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:216
-#: includes/api/rest/class-orders-controller.php:2437
+#: includes/api/rest/class-orders-controller.php:2444
 #. translators: 1: item name
 msgid "Item %s is not shippable product. Skipping."
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:238
-#: includes/api/rest/class-orders-controller.php:2457
+#: includes/api/rest/class-orders-controller.php:2464
 #. translators: 1) shipped items 2) carrier's name 3) shipped date, 4) tracking
 #. number
 msgid "%1$s shipped via %2$s on %3$s with tracking number %4$s."
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:254
-#: includes/api/rest/class-orders-controller.php:2473
+#: includes/api/rest/class-orders-controller.php:2480
 #. translators: 1) number of shipped items 2) total shipped items 3) order ID
 msgid "Shipped %1$d out of %2$d items in order %3$s"
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:285
-#: includes/api/rest/class-orders-controller.php:2503
+#: includes/api/rest/class-orders-controller.php:2510
 #. translators: 1) carrier's name 2) shipped date, 3) tracking number
 msgid "Items shipped via %1$s on %2$s with tracking number %3$s (Shipstation)."
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:292
-#: includes/api/rest/class-orders-controller.php:2510
+#: includes/api/rest/class-orders-controller.php:2517
 #. translators: 1: order id
 msgid "No items found - shipping entire order %d."
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:308
-#: includes/api/rest/class-orders-controller.php:2526
+#: includes/api/rest/class-orders-controller.php:2533
 msgid "You're using Shipment Tracking < 1.4.0. Please update!"
 msgstr ""
 
 #: includes/api/requests/class-wc-shipstation-api-shipnotify.php:438
-#: includes/api/rest/class-orders-controller.php:2657
+#: includes/api/rest/class-orders-controller.php:2664
 #. translators: 1) order ID 2) shipment status
 msgid "Updated order %1$s to status %2$s"
 msgstr ""
@@ -152,12 +152,12 @@ msgid "ShipStation-issued rates URL."
 msgstr ""
 
 #: includes/api/rest/class-inventory-controller.php:55
-#: includes/api/rest/class-orders-controller.php:194
+#: includes/api/rest/class-orders-controller.php:196
 msgid "Page number of the results to return."
 msgstr ""
 
 #: includes/api/rest/class-inventory-controller.php:66
-#: includes/api/rest/class-orders-controller.php:205
+#: includes/api/rest/class-orders-controller.php:207
 msgid "Maximum number of items to return per page (1–500)."
 msgstr ""
 
@@ -209,37 +209,37 @@ msgstr ""
 msgid "No inventory changes made."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:184
+#: includes/api/rest/class-orders-controller.php:186
 msgid ""
 "Return orders modified after this date/time (ISO8601, UTC). Leave empty to "
 "ignore."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:216
+#: includes/api/rest/class-orders-controller.php:218
 msgid ""
 "Mapping of WooCommerce order statuses to ShipStation statuses. Format: "
 "wc_status:ShipStationStatus (e.g., processing:AwaitingShipment). Accepts "
 "multiple values."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:235
+#: includes/api/rest/class-orders-controller.php:237
 msgid ""
 "Return specific orders by ID. When present, page/per_page/modified_after "
 "are ignored and orders are returned regardless of status."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:244
+#: includes/api/rest/class-orders-controller.php:246
 msgid "order_ids[] must contain 500 or fewer IDs."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:359
+#: includes/api/rest/class-orders-controller.php:361
 #. translators: 1: order id, 2: WC order status, 3: shipstation order status.
 msgid ""
 "Order %1$s has an unmapped WooCommerce status (%2$s). Defaulting to "
 "ShipStation status \"%3$s\". Please review your status mappings."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:550
+#: includes/api/rest/class-orders-controller.php:552
 #. translators: 1: orders declined by the filter, 2: requested order IDs that
 #. could not be loaded, 3: comma-separated order IDs, or a dash
 msgid ""
@@ -248,13 +248,13 @@ msgid ""
 "not be loaded (IDs: %3$s)."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:691
+#: includes/api/rest/class-orders-controller.php:693
 msgid ""
 "No order statuses provided in the request. Using default export statuses "
 "from the settings."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:711
+#: includes/api/rest/class-orders-controller.php:713
 #. translators: 1: status mapping requested by ShipStation, 2: export statuses
 #. queried instead
 msgid ""
@@ -262,7 +262,7 @@ msgid ""
 "status. Using the default export statuses (%2$s)."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:746
+#: includes/api/rest/class-orders-controller.php:748
 #. translators: %s: statuses enabled for export that are no longer registered
 msgid ""
 "The requested status mapping resolves only to export statuses that are no "
@@ -270,7 +270,7 @@ msgid ""
 "plugin that added these statuses may be deactivated."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:756
+#: includes/api/rest/class-orders-controller.php:758
 #. translators: 1: statuses requested by ShipStation, 2: export statuses that
 #. are enabled and registered
 msgid ""
@@ -279,55 +279,55 @@ msgid ""
 "setting."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1301
+#: includes/api/rest/class-orders-controller.php:1303
 #. translators: %1$s is a coupon code.
 msgid "Discount from coupon: %1$s"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:1325
+#: includes/api/rest/class-orders-controller.php:1327
 msgid "Additional Discount"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2001
+#: includes/api/rest/class-orders-controller.php:2008
 msgid "Tax"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2218
+#: includes/api/rest/class-orders-controller.php:2225
 msgid "Notification ID is empty for this notification: "
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2226
+#: includes/api/rest/class-orders-controller.php:2233
 msgid "Empty order ID"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2230
+#: includes/api/rest/class-orders-controller.php:2237
 #. translators: %1$s is the notification id.
 msgid "Notification ID: %1$s doesnt have order ID."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2239
+#: includes/api/rest/class-orders-controller.php:2246
 msgid "Order ID is not numeric"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2243
+#: includes/api/rest/class-orders-controller.php:2250
 #. translators: %1$s is the order id, %2$d is the notification id.
 msgid "Order ID: %1$d from notification ID: %2$s is not numeric."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2263
+#: includes/api/rest/class-orders-controller.php:2270
 msgid "Order not found"
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2269
+#: includes/api/rest/class-orders-controller.php:2276
 #. translators: %1$d is the order ID, %2$s is the order number.
 msgid "Order ID: %1$d or Order number: %2$s cannot be found."
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2296
+#: includes/api/rest/class-orders-controller.php:2303
 msgid "Skipped this item because doesnt have description and quantity: "
 msgstr ""
 
-#: includes/api/rest/class-orders-controller.php:2418
+#: includes/api/rest/class-orders-controller.php:2425
 #. translators: 1) notification ID 2) order ID
 msgid ""
 "Notification ID: %1$s was already recorded on order %2$s. Skipping the "
@@ -608,22 +608,22 @@ msgstr ""
 msgid "Go to ShipStation settings"
 msgstr ""
 
-#: includes/class-main.php:94
+#: includes/class-main.php:95
 #. translators: %s WC download URL link.
 msgid ""
 "Shipstation requires WooCommerce to be installed and active. You can "
 "download %s here."
 msgstr ""
 
-#: includes/class-main.php:574
+#: includes/class-main.php:576
 msgid "Settings"
 msgstr ""
 
-#: includes/class-main.php:575
+#: includes/class-main.php:577
 msgid "Support"
 msgstr ""
 
-#: includes/class-main.php:576
+#: includes/class-main.php:578
 msgid "Docs"
 msgstr ""
 

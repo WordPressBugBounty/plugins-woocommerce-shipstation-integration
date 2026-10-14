@@ -12,6 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 use WooCommerce\Shipping\ShipStation\Checkout;
 use WooCommerce\Shipping\ShipStation\Logger;
 use WooCommerce\Shipping\ShipStation\Order_Util;
+use WooCommerce\Shipping\ShipStation\GPDT\Prepaid_Duties;
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound -- Legacy public class name retained for backward compatibility.
 /**
@@ -536,6 +537,11 @@ class WC_Shipstation_API_Export extends WC_Shipstation_API_Request {
 				// Merge arrays without loosing indexes.
 				$order_items = $order->get_items() + $order->get_items( 'fee' );
 				foreach ( $order_items as $item_id => $item ) {
+					// The prepaid duties fee is never an item. The XML export has no duties field, so its amount shows only in OrderTotal.
+					if ( $item instanceof WC_Order_Item_Fee && Prepaid_Duties::is_prepaid_duties_fee( $item ) ) {
+						continue;
+					}
+
 					$product                = is_callable( array( $item, 'get_product' ) ) ? $item->get_product() : false;
 					$item_needs_shipping    = Order_Util::item_needs_shipping( $item, $product );
 					$item_needs_no_shipping = ! $item_needs_shipping;

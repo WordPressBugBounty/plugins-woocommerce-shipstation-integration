@@ -4,10 +4,10 @@ Tags: shipping, woocommerce, woo, automattic
 Requires at least: 7.0
 Tested up to: 7.1
 WC tested up to: 11.2
-WC requires at least: 10.9
+WC requires at least: 11.0
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.3.9
+Stable tag: 5.4.0
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,9 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.4.0 - 2026-10-14 =
+* Fix   - Request ShipStation rates as soon as the customer has entered a country and ZIP code, instead of waiting for a city, and stop logging errors while the address is still incomplete.
 
 = 5.3.9 - 2026-10-07 =
 * Add   - Filter woocommerce_shipstation_checkout_rates_is_checkout_context, which lets other checkout requests receive ShipStation rates.

@@ -1,5 +1,8 @@
 *** ShipStation for WooCommerce ***
 
+= 5.4.0 - 2026-10-14 =
+* Fix   - Request ShipStation rates as soon as the customer has entered a country and ZIP code, instead of waiting for a city, and stop logging errors while the address is still incomplete.
+
 = 5.3.9 - 2026-10-07 =
 * Add   - Filter woocommerce_shipstation_checkout_rates_is_checkout_context, which lets other checkout requests receive ShipStation rates.
 * Fix   - Return ShipStation checkout rates in WooCommerce PayPal Payments checkout requests, where paying could fail with "No shipping method has been selected".

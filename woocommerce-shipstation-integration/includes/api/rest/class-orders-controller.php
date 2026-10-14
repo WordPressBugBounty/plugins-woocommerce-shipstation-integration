@@ -16,6 +16,7 @@ use WC_Order;
 use WC_Order_Refund;
 use WC_Order_Item;
 use WC_Order_Item_Coupon;
+use WC_Order_Item_Fee;
 use WC_Order_Item_Product;
 use WC_Order_Item_Shipping;
 use WC_Order_Item_Tax;
@@ -27,6 +28,7 @@ use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
 use WooCommerce\Shipping\ShipStation\Order_Util;
+use WooCommerce\Shipping\ShipStation\GPDT\Prepaid_Duties;
 use WooCommerce\Shipping\ShipStation\Checkout;
 use Automattic\WooCommerce\Utilities\NumberUtil;
 use WooCommerce\Shipping\ShipStation\Enum_Helper;
@@ -1452,6 +1454,11 @@ class Orders_Controller extends API_Controller {
 		$order_items       = $order->get_items( array( 'line_item', 'fee' ) );
 
 		foreach ( $order_items as $item ) {
+			// The prepaid duties amount belongs in the `duties` object, never in the items.
+			if ( $item instanceof WC_Order_Item_Fee && Prepaid_Duties::is_prepaid_duties_fee( $item ) ) {
+				continue;
+			}
+
 			$fulfillment_item = $this->get_fulfillment_item( $item, $order, 0, $extra_args );
 
 			if ( empty( $fulfillment_item ) ) {

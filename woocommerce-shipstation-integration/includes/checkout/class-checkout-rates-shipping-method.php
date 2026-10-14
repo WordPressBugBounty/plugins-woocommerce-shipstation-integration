@@ -135,6 +135,15 @@ class Checkout_Rates_Shipping_Method extends \WC_Shipping_Method {
 					$this->apply_rate_display_fields( $added_rate, $rate );
 				}
 			}
+		} catch ( Checkout_Rates_Invalid_Payload_Exception $e ) {
+			// The validator has already logged an incomplete address at debug level.
+			if ( $e->is_incomplete_address() ) {
+				return;
+			}
+
+			Logger::error(
+				'Checkout rates: unexpected error during rate calculation. ' . Checkout_Rates_Options::redact( $e->getMessage() )
+			);
 		} catch ( \Throwable $e ) {
 			Logger::error(
 				'Checkout rates: unexpected error during rate calculation. ' . Checkout_Rates_Options::redact( $e->getMessage() )

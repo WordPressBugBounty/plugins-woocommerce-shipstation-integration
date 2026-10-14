@@ -17,6 +17,7 @@ use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Chosen_Rate;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Classic_Label;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Shipping_Method;
+use WooCommerce\Shipping\ShipStation\GPDT\Prepaid_Duties;
 use WooCommerce\Shipping\ShipStation\Integrations\PayPal_Payments_Integration;
 use WooCommerce\Shipping\ShipStation\REST_API_Loader;
 use WC_ShipStation_Privacy;
@@ -418,6 +419,7 @@ class Main {
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-enum-helper.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-features.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-order-util.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/gpdt/class-prepaid-duties.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-connection-log.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-wpcom-connection.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
@@ -594,7 +596,13 @@ class Main {
 	 * these from the storefront, emails, and the Store API; wp-admin renders item
 	 * meta with an empty hide-prefix, so it needs the allow-list filter instead.
 	 *
+	 * Fee rows on the admin order screen print no item meta, so the prepaid
+	 * duties fee tag never shows there. Its entry here reserves the key instead:
+	 * on WooCommerce 11.0+ admin item saves skip the keys on this list, so the
+	 * tag cannot be added or edited as custom meta from wp-admin.
+	 *
 	 * @since 5.0.9
+	 * @since 5.4.0 Also reserves the prepaid duties fee tag key.
 	 *
 	 * @param array $hidden Hidden order item meta keys.
 	 *
@@ -603,6 +611,7 @@ class Main {
 	public function hide_internal_order_item_meta( array $hidden ): array {
 		$hidden[] = Checkout_Rates_Options::RATE_CODE_META_KEY;
 		$hidden[] = Checkout_Rates_Options::QUOTE_ID_META_KEY;
+		$hidden[] = Prepaid_Duties::META_KEY;
 
 		return $hidden;
 	}
