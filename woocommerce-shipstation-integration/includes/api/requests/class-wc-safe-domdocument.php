@@ -27,6 +27,7 @@ class WC_Safe_DOMDocument extends DOMDocument {
 	 *
 	 * @throws Exception When the file is empty or not readable.
 	 */
+	#[\ReturnTypeWillChange]
 	public function load( $filename, $options = 0 ) {
 		if ( '' === $filename ) {
 			// "If an empty string is passed as the filename or an empty file is named, a warning will be generated."
@@ -63,6 +64,7 @@ class WC_Safe_DOMDocument extends DOMDocument {
 	 * @todo Once PHP 8.0 is the minimum version, remove all libxml_disable_entity_loader() calls and the $old variable.
 	 * @see  https://www.php.net/manual/en/function.libxml-disable-entity-loader.php#125661
 	 */
+	#[\ReturnTypeWillChange]
 	public function loadXML( $source, $options = 0 ) {
 		if ( '' === $source ) {
 			// "If an empty string is passed as the source, a warning will be generated."

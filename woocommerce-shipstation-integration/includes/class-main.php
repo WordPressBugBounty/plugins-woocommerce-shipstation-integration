@@ -18,6 +18,8 @@ use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Classic_Label;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Shipping_Method;
 use WooCommerce\Shipping\ShipStation\GPDT\Prepaid_Duties;
+use WooCommerce\Shipping\ShipStation\GPDT\Prepaid_Duties_Analytics;
+use WooCommerce\Shipping\ShipStation\GPDT\Prepaid_Duties_Fee;
 use WooCommerce\Shipping\ShipStation\Integrations\PayPal_Payments_Integration;
 use WooCommerce\Shipping\ShipStation\REST_API_Loader;
 use WC_ShipStation_Privacy;
@@ -112,6 +114,9 @@ class Main {
 		}
 
 		$this->load_files();
+		// Outside the transport gate in maybe_init_wpcom_connection(): a repair
+		// another plugin runs over REST must still restamp the recorded URL.
+		WPCOM_Connection::register_url_restamp();
 		$this->maybe_init_wpcom_connection();
 
 		// Must land before init:10, where WooCommerce reads
@@ -171,6 +176,13 @@ class Main {
 			'woocommerce_package_rates',
 			array( Checkout_Rates_Options::class, 'note_package_rates_calculated' )
 		);
+		// The discard also needs the package keys: WooCommerce Subscriptions' recurring
+		// packages are not among the cart's keys at shutdown (SHIPSTN-238).
+		add_filter(
+			'woocommerce_shipping_packages',
+			array( Checkout_Rates_Options::class, 'note_shipping_package_keys' ),
+			PHP_INT_MIN
+		);
 		add_action(
 			'shutdown',
 			array( Checkout_Rates_Options::class, 'discard_non_checkout_rate_cache' ),
@@ -189,6 +201,15 @@ class Main {
 		// Give PayPal Payments checkout requests ShipStation rates.
 		// Always registered: its callbacks do nothing outside PayPal requests.
 		PayPal_Payments_Integration::register();
+
+		// Prepaid duties column in the Analytics Orders report and its export.
+		// Always registered: its callbacks do nothing while the GPDT flag is off.
+		Prepaid_Duties_Analytics::register();
+
+		// Prepaid duties as their own cart fee beside the freight-only GPDT rate, tagged on the order fee line.
+		// Always registered: the callbacks act only on a chosen GPDT rate or a fee carrying the duties fee id,
+		// so a subscription bought while the flag was on is still handled after the flag is turned off.
+		Prepaid_Duties_Fee::register();
 	}
 
 	/**
@@ -420,6 +441,8 @@ class Main {
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-features.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-order-util.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/gpdt/class-prepaid-duties.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/gpdt/class-prepaid-duties-analytics.php';
+		require_once WC_SHIPSTATION_ABSPATH . 'includes/gpdt/class-prepaid-duties-fee.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-connection-log.php';
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/class-wpcom-connection.php';
 		include_once WC_SHIPSTATION_ABSPATH . 'includes/class-wc-shipstation-integration.php';
@@ -603,6 +626,7 @@ class Main {
 	 *
 	 * @since 5.0.9
 	 * @since 5.4.0 Also reserves the prepaid duties fee tag key.
+	 * @since 5.4.1 Hides the GPDT rate id and duties amount keys.
 	 *
 	 * @param array $hidden Hidden order item meta keys.
 	 *
@@ -612,6 +636,8 @@ class Main {
 		$hidden[] = Checkout_Rates_Options::RATE_CODE_META_KEY;
 		$hidden[] = Checkout_Rates_Options::QUOTE_ID_META_KEY;
 		$hidden[] = Prepaid_Duties::META_KEY;
+		$hidden[] = Checkout_Rates_Options::GPDT_RATE_ID_META_KEY;
+		$hidden[] = Checkout_Rates_Options::DUTIES_TAXES_META_KEY;
 
 		return $hidden;
 	}

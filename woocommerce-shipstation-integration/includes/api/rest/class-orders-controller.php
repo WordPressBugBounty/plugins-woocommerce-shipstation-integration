@@ -234,7 +234,7 @@ class Orders_Controller extends API_Controller {
 						},
 					),
 					'order_ids'      => array(
-						'description'       => __( 'Return specific orders by ID. When present, page/per_page/modified_after are ignored and orders are returned regardless of status.', 'woocommerce-shipstation-integration' ),
+						'description'       => __( 'Return specific orders by ID. When present, page/per_page/modified_after are ignored and orders are returned regardless of status. Orders with nothing to ship are left out.', 'woocommerce-shipstation-integration' ),
 						'type'              => 'array',
 						// Schema documentation only; the sanitize callback is
 						// the guard. See status_mapping above.
@@ -612,15 +612,20 @@ class Orders_Controller extends API_Controller {
 	 */
 	private function process_get_orders( WP_REST_Request $request ): WP_REST_Response {
 		$request_params = $request->get_params();
+		$key_can_write  = $this->request_key_can_write( $request );
 
 		/**
 		* Action hook before the `/orders` REST API endpoint process the request parameter.
 		*
 		* @param array $request_params
+		* @param bool  $key_can_write  Whether the request may change settings. When false (a Read key,
+		*                              or a credential whose permission cannot be read), callbacks
+		*                              must not save settings.
 		*
 		* @since 4.8.0
+		* @since 5.4.1 Added the $key_can_write parameter.
 		*/
-		do_action( 'woocommerce_shipstation_get_orders_before_process_request', $request_params );
+		do_action( 'woocommerce_shipstation_get_orders_before_process_request', $request_params, $key_can_write );
 
 		// Ensure third-party export filters (e.g. Product Bundles) are loaded.
 		$this->fire_legacy_api_action();
@@ -816,9 +821,10 @@ class Orders_Controller extends API_Controller {
 			return new WP_REST_Response( $sales_orders_data, 200 );
 		}
 
-		$ids_to_fetch = array();
-		$filtered_out = 0;
-		$unavailable  = array();
+		$ids_to_fetch    = array();
+		$filtered_out    = 0;
+		$unavailable     = array();
+		$nothing_to_ship = array();
 
 		foreach ( $results->orders as $order_id ) {
 			/**
@@ -870,12 +876,20 @@ class Orders_Controller extends API_Controller {
 					continue;
 				}
 
-				$sales_orders_data['sales_orders'][] = $this->get_order_data( $order );
+				$order_data = $this->get_order_data( $order );
+
+				if ( $this->has_nothing_to_ship( $order_data ) ) {
+					$nothing_to_ship[] = (int) $order_id;
+					continue;
+				}
+
+				$sales_orders_data['sales_orders'][] = $order_data;
 				$orders_to_mark[]                    = $order;
 			}
 
 			Order_Util::mark_orders_exported_bulk( $orders_to_mark );
 			$this->warn_page_shrank( $filtered_out, $unavailable );
+			$this->log_nothing_to_ship( $nothing_to_ship );
 		} finally {
 			// The page's payload pass is over; keep the notes map from
 			// accumulating across pages in long-lived processes, even when
@@ -894,7 +908,8 @@ class Orders_Controller extends API_Controller {
 	 * Called when the `order_ids` request parameter is present. Bypasses
 	 * the normal modified_after/pagination query and returns orders regardless
 	 * of their WC status. IDs not found in the database are logged as warnings
-	 * and omitted from the response.
+	 * and omitted from the response. Orders with nothing to ship are omitted
+	 * too, unmarked and without a warning (a debug line names them).
 	 *
 	 * @since 5.1.0
 	 *
@@ -908,10 +923,11 @@ class Orders_Controller extends API_Controller {
 
 		$orders_by_id = $this->get_orders_by_ids( $requested_ids, array( 'status' => 'any' ) );
 
-		$sales_orders   = array();
-		$orders_to_mark = array();
-		$filtered_out   = 0;
-		$unavailable    = array();
+		$sales_orders    = array();
+		$orders_to_mark  = array();
+		$filtered_out    = 0;
+		$unavailable     = array();
+		$nothing_to_ship = array();
 
 		try {
 			// Inside the try: the notes prime seeds the map for every ID before
@@ -958,12 +974,20 @@ class Orders_Controller extends API_Controller {
 					continue;
 				}
 
-				$sales_orders[]   = $this->get_order_data( $order );
+				$order_data = $this->get_order_data( $order );
+
+				if ( $this->has_nothing_to_ship( $order_data ) ) {
+					$nothing_to_ship[] = $order_id;
+					continue;
+				}
+
+				$sales_orders[]   = $order_data;
 				$orders_to_mark[] = $order;
 			}
 
 			Order_Util::mark_orders_exported_bulk( $orders_to_mark );
 			$this->warn_requested_ids_missing( $filtered_out, $unavailable );
+			$this->log_nothing_to_ship( $nothing_to_ship );
 		} finally {
 			// The page's payload pass is over; keep the notes map from
 			// accumulating across pages in long-lived processes, even when
@@ -976,6 +1000,53 @@ class Orders_Controller extends API_Controller {
 		$count = count( $sales_orders );
 
 		return new WP_REST_Response( $this->orders_page_data( $sales_orders, 1, $count, $count, 1 ), 200 );
+	}
+
+	/**
+	 * Whether the order has no item to ship, matching the XML export.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param array $order_data The payload from get_order_data().
+	 *
+	 * @return bool
+	 */
+	private function has_nothing_to_ship( array $order_data ): bool {
+		return empty( $order_data['requested_fulfillments'] );
+	}
+
+	/**
+	 * Log, at debug level, the orders left out for having nothing to ship.
+	 *
+	 * Not a warning: on a store that sells mostly virtual products almost every
+	 * page leaves orders out, and that is the expected result. The line lets
+	 * support tell an order left out on purpose from a lost one.
+	 *
+	 * Contained: a log write is a handoff, and one broken handler must not fail
+	 * the whole page.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param int[] $order_ids Order IDs left out.
+	 * @return void
+	 */
+	private function log_nothing_to_ship( array $order_ids ): void {
+		if ( empty( $order_ids ) ) {
+			return;
+		}
+
+		$message = sprintf(
+			'Left out %1$d order(s) with nothing to ship; they are not exported or marked (IDs: %2$s).',
+			count( $order_ids ),
+			implode( ', ', array_slice( $order_ids, 0, self::MAX_SKIPPED_IDS_LOGGED ) )
+		);
+
+		Order_Util::log_isolated(
+			'the nothing-to-ship debug line',
+			static function () use ( $message ) {
+				Logger::debug( $message );
+			}
+		);
 	}
 
 	/**
@@ -1170,6 +1241,10 @@ class Orders_Controller extends API_Controller {
 		 *
 		 * For more information on all available parameter,
 		 * please refer to this ShipStation API documentation : https://ddnmn7gngv.apidog.io/orders-18958392e0.
+		 *
+		 * Since 5.4.1, an order whose `requested_fulfillments` is empty after this
+		 * filter is left out of the REST export and is not marked as exported, so a
+		 * call does not mean the order is sent to ShipStation.
 		 *
 		 * @param array    $order_data The order data to be returned.
 		 * @param WC_Order $order      The order object.
@@ -1499,12 +1574,25 @@ class Orders_Controller extends API_Controller {
 		// Surface the customer's selected ShipStation Checkout Rates code so
 		// ShipStation can auto-assign the chosen carrier service. Omitted entirely
 		// when the order has no ShipStation rate code (e.g. a flat-rate shipment).
-		$preplanned_fulfillment_id = Order_Util::get_checkout_rate_code( $order );
+		// When a shipping item has a GPDT rate ID, both fields come from that one
+		// item, so the rate code and the GPDT rate ID always name the same quote.
+		$gpdt_item = Order_Util::get_gpdt_shipping_item( $order );
+		$gpdt_code = null !== $gpdt_item ? $gpdt_item->get_meta( Checkout\Checkout_Rates_Options::RATE_CODE_META_KEY ) : '';
+
+		$preplanned_fulfillment_id = is_string( $gpdt_code ) && '' !== $gpdt_code ? $gpdt_code : Order_Util::get_checkout_rate_code( $order );
 		if ( '' !== $preplanned_fulfillment_id ) {
 			$shipping_preferences['preplanned_fulfillment_id'] = $preplanned_fulfillment_id;
 		}
 
-		return array(
+		// Tell ShipStation which guaranteed GPDT quote was used, so it can relay
+		// the rate ID to the carrier at label purchase, and that duties were
+		// prepaid. Omitted entirely when the order has no GPDT rate ID.
+		$gpdt_rate_id = null !== $gpdt_item ? (string) $gpdt_item->get_meta( Checkout\Checkout_Rates_Options::GPDT_RATE_ID_META_KEY ) : '';
+		if ( '' !== $gpdt_rate_id ) {
+			$shipping_preferences['gpdt_rate_id'] = $gpdt_rate_id;
+		}
+
+		$fulfillment = array(
 			'requested_fulfillment_id' => $fulfillment_id,
 			'ship_to'                  => array(
 				'name'           => $address_data['name'],
@@ -1521,6 +1609,30 @@ class Orders_Controller extends API_Controller {
 			'extensions'               => $this->get_custom_fields( $order ),
 			'shipping_preferences'     => $shipping_preferences,
 		);
+
+		if ( '' !== $gpdt_rate_id ) {
+			$fulfillment['duties'] = array(
+				'delivered_duty_paid'          => true,
+				'duties_displayed_at_checkout' => true,
+			);
+
+			// The original amount charged, not reduced by refunds.
+			$duties_total = Prepaid_Duties::get_prepaid_duties( $order );
+
+			// Maybe convert the duties total using per-order exchange rate.
+			$rate = $this->get_exchange_rate();
+			if ( 1.00 !== $rate ) {
+				$duties_total = NumberUtil::round( $duties_total * $rate, wc_get_price_decimals() );
+			}
+
+			// Left out when ShipStation rolled the duties into the rate (no
+			// tagged fee), or the converted total is zero or below.
+			if ( $duties_total > 0 ) {
+				$fulfillment['duties']['duties_total'] = $duties_total;
+			}
+		}
+
+		return $fulfillment;
 	}
 
 	/**
@@ -1649,7 +1761,8 @@ class Orders_Controller extends API_Controller {
 		 * Filters the fulfillment item data before it is returned.
 		 *
 		 * This filter allows third-party plugins to modify the fulfillment item data
-		 * that will be sent to ShipStation.
+		 * that will be sent to ShipStation. Since 5.4.1, an order left with no item
+		 * is left out of the REST export and is not marked as exported.
 		 *
 		 * @since 4.8.0
 		 *

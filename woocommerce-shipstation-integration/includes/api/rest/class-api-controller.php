@@ -53,6 +53,45 @@ class API_Controller {
 	private static array $api_key_row_cache = array();
 
 	/**
+	 * Id of the WooCommerce API key that authenticated the current request, or
+	 * 0 when WooCommerce authenticated none. Set by capture_request_key() and
+	 * cleared by reset_request_key() at the start of every dispatch.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @var int
+	 */
+	private static int $request_key_id = 0;
+
+	/**
+	 * Memoised request_key_can_write() answer for the current dispatch.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @var bool|null
+	 */
+	private static ?bool $request_key_can_write = null;
+
+	/**
+	 * Id of the relayed key request_key_can_write() resolved on a proxied request,
+	 * or 0. Cleared by reset_request_key().
+	 *
+	 * @since 5.4.1
+	 *
+	 * @var int
+	 */
+	private static int $proxied_key_id = 0;
+
+	/**
+	 * Per-dispatch memoisation of the `permissions` column, keyed by key_id.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @var array<int, string>
+	 */
+	private static array $key_permissions_cache = array();
+
+	/**
 	 * Log something.
 	 *
 	 * @param string $message Log message.
@@ -257,10 +296,10 @@ class API_Controller {
 	 * a second DB lookup.
 	 *
 	 * The credential is read exclusively from the `X-ShipStation-Authorization`
-	 * relay header: the only caller is the strict gate in
-	 * check_namespace_permission(), which runs only for proxied requests (relay
-	 * header present). Direct (non-proxied) calls are authenticated upstream by
-	 * WC core's WC_REST_Authentication, not here.
+	 * relay header. Callers: the strict gate in check_namespace_permission() and
+	 * request_key_can_write(), both only for proxied requests (relay header
+	 * present, transport on). Direct (non-proxied) calls are authenticated
+	 * upstream by WC core's WC_REST_Authentication, not here.
 	 *
 	 * The lookup hashes the inbound consumer_key and queries the row by that
 	 * hash. We deliberately do not pin to `woocommerce_shipstation_api_key_id`:
@@ -273,8 +312,9 @@ class API_Controller {
 	 * @since 5.0.5
 	 *
 	 * @param WP_REST_Request $request Current REST request.
-	 * @return \stdClass|null woocommerce_api_keys row (user_id, consumer_key,
-	 *                       consumer_secret) on success; null on rejection.
+	 * @return \stdClass|null woocommerce_api_keys row (key_id, user_id, consumer_key,
+	 *                       consumer_secret, truncated_key, permissions) on success;
+	 *                       null on rejection.
 	 */
 	private function resolve_authenticated_api_key_row( WP_REST_Request $request ): ?\stdClass {
 		list( $consumer_key, $consumer_secret ) = $this->parse_basic_auth_payload(
@@ -320,13 +360,216 @@ class API_Controller {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Hash-equality lookup against WooCommerce's API keys table, which has no CRUD equivalent; the result is memoised in self::$api_key_row_cache for the request lifetime.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT key_id, user_id, consumer_key, consumer_secret, truncated_key FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_key = %s",
+				"SELECT key_id, user_id, consumer_key, consumer_secret, truncated_key, permissions FROM {$wpdb->prefix}woocommerce_api_keys WHERE consumer_key = %s",
 				$hashed_consumer_key
 			)
 		);
 
 		self::$api_key_row_cache[ $hashed_consumer_key ] = $row instanceof \stdClass ? $row : null;
 		return self::$api_key_row_cache[ $hashed_consumer_key ];
+	}
+
+	/**
+	 * Hook the capture of the API key WooCommerce authenticated, and its reset.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @return void
+	 */
+	public static function register_request_key_hooks(): void {
+		add_filter( 'woocommerce_disable_rest_api_access_log', array( __CLASS__, 'capture_request_key' ), 10, 2 );
+		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'reset_request_key' ), 9 );
+	}
+
+	/**
+	 * Remember which API key WooCommerce authenticated for this request.
+	 *
+	 * WooCommerce keeps the authenticated key private. This filter is the only
+	 * public place that receives its id: WC_REST_Authentication applies it on
+	 * rest_pre_dispatch (priority 10) after the key passed WooCommerce's own
+	 * method check. Reading the id here, instead of parsing the credentials
+	 * again, guarantees we look at the same key WooCommerce accepted.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param bool $do_not_record Whether WooCommerce skips the last_access write. Returned unchanged.
+	 * @param int  $key_id        Id of the authenticated key.
+	 * @return bool
+	 */
+	public static function capture_request_key( $do_not_record, $key_id ) {
+		self::$request_key_id        = (int) $key_id;
+		self::$request_key_can_write = null;
+
+		return $do_not_record;
+	}
+
+	/**
+	 * Forget the key of the previous dispatch.
+	 *
+	 * Runs on rest_pre_dispatch before WooCommerce reports the key of the new
+	 * dispatch, so internal rest_do_request() calls never reuse an earlier answer.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param mixed $result Response to short-circuit the dispatch with. Returned unchanged.
+	 * @return mixed
+	 */
+	public static function reset_request_key( $result ) {
+		self::$request_key_id        = 0;
+		self::$proxied_key_id        = 0;
+		self::$request_key_can_write = null;
+		self::$key_permissions_cache = array();
+
+		return $result;
+	}
+
+	/**
+	 * Id of the API key the current dispatch was authenticated with, for logs
+	 * and per-key throttles: the key WooCommerce authenticated, or the relayed
+	 * key once request_key_can_write() resolved it. 0 when there is none.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @return int
+	 */
+	public static function current_request_key_id(): int {
+		return self::$request_key_id > 0 ? self::$request_key_id : self::$proxied_key_id;
+	}
+
+	/**
+	 * Whether the request may change settings.
+	 *
+	 * When the WPCOM transport is on, a proxied request uses the key relayed in
+	 * X-ShipStation-Authorization. Otherwise the request uses the key WooCommerce
+	 * authenticated. A request that names a WooCommerce credential (a ck_ key
+	 * or an OAuth header) but has no captured key cannot write. A request with no credential at all (cookie,
+	 * application password, or a route WooCommerce does not authenticate) may
+	 * write when the user can manage WooCommerce. A key whose permission cannot
+	 * be read cannot write.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param WP_REST_Request $request Current REST request.
+	 * @return bool
+	 */
+	public function request_key_can_write( WP_REST_Request $request ): bool {
+		if ( null !== self::$request_key_can_write ) {
+			return self::$request_key_can_write;
+		}
+
+		$is_proxied = '' !== (string) $request->get_header( 'x_shipstation_authorization' );
+
+		if ( $is_proxied && Features::is_wpcom_transport_enabled() ) {
+			// A null row is only reachable from a direct call: on a dispatch, the
+			// permission callback already answered 401 for an unresolvable credential.
+			$row                  = $this->resolve_authenticated_api_key_row( $request );
+			$permissions          = null === $row ? '' : (string) $row->permissions;
+			self::$proxied_key_id = null === $row ? 0 : (int) $row->key_id;
+			$can_write            = in_array( $permissions, array( 'write', 'read_write' ), true );
+			$reason               = 'permissions=' . ( '' === $permissions ? 'unresolved' : $permissions );
+		} elseif ( self::$request_key_id > 0 ) {
+			$permissions = $this->fetch_api_key_permissions_by_id( self::$request_key_id );
+			$can_write   = in_array( $permissions, array( 'write', 'read_write' ), true );
+			$reason      = 'permissions=' . ( '' === $permissions ? 'unresolved' : $permissions );
+		} elseif ( $this->request_carries_wc_credential( $request ) ) {
+			// WooCommerce reports every key it authenticates through the capture filter.
+			// A credential with no captured key means the capture did not run (a removed
+			// filter, a WooCommerce change), so do not fall back to the owner's capability.
+			$can_write = false;
+			$reason    = 'a WooCommerce credential is present but no key was captured';
+		} else {
+			// No WooCommerce credential: a cookie, an application password, or a route
+			// WooCommerce does not authenticate. The user's capability decides.
+			// phpcs:ignore WordPress.WP.Capabilities.Unknown -- WooCommerce core capability.
+			$can_write = current_user_can( 'manage_woocommerce' );
+			$reason    = 'no API key and the user cannot manage WooCommerce';
+		}
+
+		self::$request_key_can_write = $can_write;
+
+		if ( ! $can_write ) {
+			self::log_contained( 'debug', 'ShipStation request may not change settings: ' . $reason );
+		}
+
+		return $can_write;
+	}
+
+	/**
+	 * Whether the request names a WooCommerce REST API credential, in any of the
+	 * places WC_REST_Authentication reads one from. Presence only: the value is
+	 * never used to pick a key.
+	 *
+	 * Every WooCommerce consumer key starts with "ck_". A Basic credential or
+	 * parameter that does not is something else, such as a WordPress application
+	 * password, and is left to the user's capability. An OAuth Authorization
+	 * header always counts.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param WP_REST_Request $request Current REST request.
+	 * @return bool
+	 */
+	private function request_carries_wc_credential( WP_REST_Request $request ): bool {
+		$authorization = (string) $request->get_header( 'authorization' );
+		if ( 0 === stripos( $authorization, 'OAuth ' ) ) {
+			return true;
+		}
+
+		list( $basic_user ) = $this->parse_basic_auth_payload( $authorization );
+		if ( self::is_consumer_key( $basic_user ) ) {
+			return true;
+		}
+
+		if ( self::is_consumer_key( $request->get_param( 'consumer_key' ) ) || self::is_consumer_key( $request->get_param( 'oauth_consumer_key' ) ) ) {
+			return true;
+		}
+
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Only compared with the "ck_" prefix, never used.
+		return isset( $_SERVER['PHP_AUTH_USER'] ) && self::is_consumer_key( wp_unslash( $_SERVER['PHP_AUTH_USER'] ) );
+	}
+
+	/**
+	 * Whether a value looks like a WooCommerce consumer key ("ck_" prefix).
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param mixed $value Value to check.
+	 * @return bool
+	 */
+	private static function is_consumer_key( $value ): bool {
+		return is_string( $value ) && 0 === strpos( $value, 'ck_' );
+	}
+
+	/**
+	 * Fetch the `permissions` column of a woocommerce_api_keys row by key_id,
+	 * memoised for the dispatch.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param int $key_id Key id.
+	 * @return string read, write or read_write; '' when no row matches.
+	 */
+	private function fetch_api_key_permissions_by_id( int $key_id ): string {
+		if ( array_key_exists( $key_id, self::$key_permissions_cache ) ) {
+			return self::$key_permissions_cache[ $key_id ];
+		}
+
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- WooCommerce's API keys table has no CRUD equivalent; the result is memoised in self::$key_permissions_cache for the request lifetime.
+		$permissions = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT permissions FROM {$wpdb->prefix}woocommerce_api_keys WHERE key_id = %d",
+				$key_id
+			)
+		);
+
+		if ( '' !== (string) $wpdb->last_error ) {
+			// The answer stays "cannot write"; log why, so a failing lookup is not mistaken for a deleted key.
+			self::log_contained( 'error', sprintf( 'Failed to read the permission of ShipStation API key %d. DB error: %s', $key_id, Order_Util::sanitize_for_log( (string) $wpdb->last_error ) ) );
+		}
+
+		self::$key_permissions_cache[ $key_id ] = is_string( $permissions ) ? $permissions : '';
+		return self::$key_permissions_cache[ $key_id ];
 	}
 
 	/**

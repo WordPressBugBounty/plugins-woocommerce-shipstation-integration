@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
+use WooCommerce\Shipping\ShipStation\API\REST\API_Controller;
 use WooCommerce\Shipping\ShipStation\API\REST\Checkout_Rates_Controller;
 use WooCommerce\Shipping\ShipStation\API\REST\Diagnostics_Controller;
 use WooCommerce\Shipping\ShipStation\API\REST\Inventory_Controller;
@@ -29,6 +30,9 @@ class REST_API_Loader {
 	public function init() {
 		// Include Base REST API class file.
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/api/rest/class-api-controller.php';
+
+		// Track which API key authenticated each request, so read-only keys cannot change settings.
+		API_Controller::register_request_key_hooks();
 
 		// Include Inventory REST API class file.
 		require_once WC_SHIPSTATION_ABSPATH . 'includes/api/rest/class-inventory-controller.php';

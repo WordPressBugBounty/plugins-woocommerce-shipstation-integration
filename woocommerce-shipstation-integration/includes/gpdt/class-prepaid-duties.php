@@ -35,10 +35,10 @@ class Prepaid_Duties {
 	 * edited as custom meta there. The value is a single array:
 	 *
 	 * - `kind`      `combined`: one figure covering duty, import tax and the carrier's disbursement fee.
-	 * - `amount`    Decimal string.
-	 * - `currency`  ISO 4217 code.
+	 * - `amount`    Decimal string: the fee amount charged at checkout.
+	 * - `currency`  ISO 4217 code of the order.
 	 * - `provider`  `shipstation`.
-	 * - `reference` The GPDT rate ID.
+	 * - `reference` The GPDT rate ID, the first one when the fee covers several packages.
 	 *
 	 * The shape stays open to a breakdown: a later version may add an optional
 	 * `components` list beside these keys, with `amount` remaining the total,
@@ -66,8 +66,8 @@ class Prepaid_Duties {
 	 * Total charged for prepaid duties on an order.
 	 *
 	 * Sums the totals of the tagged fee items, excluding tax, which is what the
-	 * customer was charged for the fee; the tag's own `amount` records the quote
-	 * and is not read here.
+	 * customer was charged for the fee; the tag's own `amount` records the amount
+	 * charged at checkout and is not read here, so later edits to the line count.
 	 *
 	 * @since 5.4.0
 	 *
@@ -147,6 +147,29 @@ class Prepaid_Duties {
 
 			return 0.0;
 		}
+	}
+
+	/**
+	 * The GPDT rate ID the order's prepaid duties fee tag names.
+	 *
+	 * Reads the `reference` of the first tagged fee whose reference is a
+	 * non-empty string. It is the first package whose duties the fee charges.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param WC_Order $order Order.
+	 * @return string The reference, or '' when no tagged fee carries one.
+	 */
+	public static function get_reference( WC_Order $order ): string {
+		foreach ( self::get_tagged_fees( $order ) as $item ) {
+			$tag = $item->get_meta( self::META_KEY, true );
+
+			if ( isset( $tag['reference'] ) && is_string( $tag['reference'] ) && '' !== $tag['reference'] ) {
+				return $tag['reference'];
+			}
+		}
+
+		return '';
 	}
 
 	/**

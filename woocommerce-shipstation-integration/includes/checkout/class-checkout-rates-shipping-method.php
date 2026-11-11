@@ -105,9 +105,9 @@ class Checkout_Rates_Shipping_Method extends \WC_Shipping_Method {
 				return;
 			}
 
-			// Builder and mapper are pure-function helpers with no external dependencies,
-			// so they are instantiated inline. Only the API client — which performs the
-			// outbound HTTP call — exposes a setter seam (set_api_client) for tests.
+			// Builder and mapper make no outbound HTTP call, so they are instantiated
+			// inline. Only the API client — which performs the outbound HTTP call —
+			// exposes a setter seam (set_api_client) for tests.
 			$builder = new Checkout_Rates_Request_Builder();
 			$payload = $builder->build( $package );
 
@@ -118,12 +118,19 @@ class Checkout_Rates_Shipping_Method extends \WC_Shipping_Method {
 				return;
 			}
 
-			$mapper = new Checkout_Rates_Response_Mapper();
-			$rates  = $mapper->map( $response );
+			// Compare quotes with the store base currency, not get_woocommerce_currency():
+			// add_rate() costs are base-currency amounts, and multi-currency plugins convert
+			// them to the shopper's currency afterwards. Those plugins also make
+			// get_woocommerce_currency() (and so the request items) the shopper's currency.
+			// A filter can return a non-string; casting an array gives "Array" and skips every
+			// quote, so anything but a string skips the currency check instead.
+			$store_currency = get_option( 'woocommerce_currency' );
+			$mapper         = new Checkout_Rates_Response_Mapper();
+			$rates          = $mapper->map( $response, is_string( $store_currency ) ? $store_currency : '' );
 
 			foreach ( $rates as $rate ) {
 				$rates_before = count( $this->rates );
-				$this->add_rate( $rate );
+				$this->add_rate( $this->freight_only( $rate ) );
 
 				// add_rate() appends exactly one rate to $this->rates, or none if it
 				// rejects the args for an empty id/label. Apply the display fields to the
@@ -149,6 +156,37 @@ class Checkout_Rates_Shipping_Method extends \WC_Shipping_Method {
 				'Checkout rates: unexpected error during rate calculation. ' . Checkout_Rates_Options::redact( $e->getMessage() )
 			);
 		}
+	}
+
+	/**
+	 * Charge a GPDT rate as freight only.
+	 *
+	 * ShipStation's cost.amount includes the prepaid duties and taxes, and WooCommerce
+	 * taxes the whole rate cost, so the duties are taken out before add_rate() and
+	 * store tax applies to the freight alone. The duties stay on the rate as meta
+	 * for the duties fee and the export to read. Only a rate carrying both the GPDT
+	 * rate id and a duties amount is a guaranteed quote; any other rate is charged
+	 * whole.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param array $rate Mapped rate array from Checkout_Rates_Response_Mapper.
+	 *
+	 * @return array The rate, with the freight as its cost.
+	 */
+	private function freight_only( array $rate ): array {
+		$meta = $rate['meta_data'] ?? array();
+
+		// The same rule the duties fee applies, so freight and fee stay paired.
+		if ( ! Checkout_Rates_Options::is_gpdt_rate_meta( $meta ) ) {
+			return $rate;
+		}
+
+		// A quote with more decimals than the store can round the duties above the cost.
+		// Rounded so add_rate_args callbacks do not see float noise such as 195.04000000000002.
+		$rate['cost'] = max( 0.0, round( (float) $rate['cost'] - (float) $meta[ Checkout_Rates_Options::DUTIES_TAXES_META_KEY ], wc_get_rounding_precision() ) );
+
+		return $rate;
 	}
 
 	/**

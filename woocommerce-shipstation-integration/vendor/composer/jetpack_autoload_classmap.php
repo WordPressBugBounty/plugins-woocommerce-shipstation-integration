@@ -490,6 +490,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Failure_Boundary_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Nothing_To_Ship_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Nothing_To_Ship_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Permission_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Permission_Test.php'
@@ -497,6 +501,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Prepaid_Duties_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Prepaid_Duties_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Read_Only_Key_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Orders_Controller_Read_Only_Key_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Orders_Controller_Status_Guard_Test' => array(
 		'version' => 'dev-trunk',
@@ -509,6 +517,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Permission_Test_Trait' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Api/Rest/Permission_Test_Trait.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Request_Key_Can_Write_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Api/Rest/Request_Key_Can_Write_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Api\\Rest\\Transport_Recording_Test' => array(
 		'version' => 'dev-trunk',
@@ -582,6 +594,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Request_Builder_Validation_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Response_Mapper_Gpdt_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Response_Mapper_Gpdt_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Response_Mapper_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Response_Mapper_Test.php'
@@ -589,6 +605,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Settings_Save_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Settings_Save_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Shipping_Method_Gpdt_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Checkout/Checkout_Rates_Shipping_Method_Gpdt_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout\\Checkout_Rates_Shipping_Method_Test' => array(
 		'version' => 'dev-trunk',
@@ -610,6 +630,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Checkout/Stub_Checkout_Rates_Api_Client.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Checkout_Gift_Display_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Checkout_Gift_Display_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Connection_Log_Health_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Connection_Log_Health_Test.php'
@@ -630,6 +654,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Deferred_Shipment_Emails_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\E2E\\Rates_Mock_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/E2E/Rates_Mock_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Enum_Helper_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Enum_Helper_Test.php'
@@ -641,6 +669,14 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Features_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Features_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\GPDT\\Prepaid_Duties_Analytics_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/GPDT/Prepaid_Duties_Analytics_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\GPDT\\Prepaid_Duties_Fee_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/GPDT/Prepaid_Duties_Fee_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\GPDT\\Prepaid_Duties_Test' => array(
 		'version' => 'dev-trunk',
@@ -689,6 +725,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Get_Checkout_Rate_Code_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Order_Util_Get_Checkout_Rate_Code_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Get_Gpdt_Rate_Id_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Order_Util_Get_Gpdt_Rate_Id_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Order_Util_Get_Order_Notes_Test' => array(
 		'version' => 'dev-trunk',
@@ -742,6 +782,10 @@ return array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/REST_API_Loader_Test.php'
 	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Read_Only_Key_Settings_Sync_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/Read_Only_Key_Settings_Sync_Test.php'
+	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Simulated_Plugin_Error' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Simulated_Plugin_Error.php'
@@ -765,6 +809,10 @@ return array(
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\Unmapped_Custom_Status_Notice_Test' => array(
 		'version' => 'dev-trunk',
 		'path'    => $baseDir . '/tests/Unit/Unmapped_Custom_Status_Notice_Test.php'
+	),
+	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\WPCOM_Connect_Fresh_Test' => array(
+		'version' => 'dev-trunk',
+		'path'    => $baseDir . '/tests/Unit/WPCOM_Connect_Fresh_Test.php'
 	),
 	'WooCommerce\\Shipping\\ShipStation\\Tests\\Unit\\WPCOM_Connection_Test' => array(
 		'version' => 'dev-trunk',

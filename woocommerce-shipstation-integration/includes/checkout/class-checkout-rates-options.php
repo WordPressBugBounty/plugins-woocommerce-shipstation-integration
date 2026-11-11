@@ -45,6 +45,40 @@ final class Checkout_Rates_Options {
 	const QUOTE_ID_META_KEY = '_shipstation_quote_id';
 
 	/**
+	 * Order shipping item meta key for a GPDT quote's ShipStation rate id.
+	 * Protected (underscore-prefixed) for the same reasons as RATE_CODE_META_KEY.
+	 *
+	 * @since 5.4.1
+	 */
+	const GPDT_RATE_ID_META_KEY = '_shipstation_gpdt_rate_id';
+
+	/**
+	 * Order shipping item meta key for a GPDT quote's duties and taxes amount:
+	 * a decimal string at the store's price decimals, in the quote's `cost.currency`,
+	 * included in the rate cost. Protected like RATE_CODE_META_KEY.
+	 *
+	 * @since 5.4.1
+	 */
+	const DUTIES_TAXES_META_KEY = '_shipstation_duties_taxes';
+
+	/**
+	 * Whether rate meta marks a guaranteed GPDT quote: a rate id and a duties amount.
+	 *
+	 * The freight-only rate and the duties fee both use this rule, so the two
+	 * stay paired. A presence check, because "0" is a valid rate id and the
+	 * mapper never stores an empty one.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param array $meta Rate meta, from the mapped rate array or WC_Shipping_Rate::get_meta_data().
+	 *
+	 * @return bool
+	 */
+	public static function is_gpdt_rate_meta( array $meta ): bool {
+		return isset( $meta[ self::GPDT_RATE_ID_META_KEY ], $meta[ self::DUTIES_TAXES_META_KEY ] );
+	}
+
+	/**
 	 * Option key for the ShipStation-issued rates URL.
 	 */
 	const OPTION_RATES_URL = 'wc_shipstation_checkout_rates_url';
@@ -67,6 +101,15 @@ final class Checkout_Rates_Options {
 	 * @var bool
 	 */
 	private static $package_rates_calculated = false;
+
+	/**
+	 * Package keys WooCommerce calculated shipping for during this request, as array keys.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @var array<int|string, true>
+	 */
+	private static $calculated_package_keys = array();
 
 	/**
 	 * Get the configured rates URL.
@@ -250,8 +293,10 @@ final class Checkout_Rates_Options {
 	 * Clear the current customer session's cached package shipping rates.
 	 *
 	 * WC caches each package's calculated rate set in the customer session under a
-	 * `shipping_for_package_{key}` key, where {key} is the package's index in
-	 * WC_Cart::get_shipping_packages() (see WC_Shipping::calculate_shipping_for_package()).
+	 * `shipping_for_package_{key}` key, where {key} is the package's key in the calculated
+	 * packages: its index in WC_Cart::get_shipping_packages() for the main cart, or
+	 * "{recurring_cart_key}_{index}" for a WooCommerce Subscriptions recurring package
+	 * (see WC_Shipping::calculate_shipping_for_package()).
 	 * Unlike flush_shipping_rate_cache(), which regenerates the global shipping
 	 * transient version and so invalidates every customer's cache, this clears only
 	 * the current session's keys — the right scope for a per-customer cart mutation.
@@ -264,16 +309,30 @@ final class Checkout_Rates_Options {
 	 * higher-index key left by a cart that has since shed a package is harmless: with
 	 * fewer packages, checkout never reads it.
 	 *
+	 * The given package keys are cleared too. At shutdown the cart returns only the main
+	 * cart's keys, so a WooCommerce Subscriptions recurring package
+	 * ("{recurring_cart_key}_{index}") is known only from its calculation (SHIPSTN-238).
+	 *
 	 * @since 5.3.0
+	 * @since 5.4.1 Added the $package_keys parameter.
+	 *
+	 * @param array<int|string> $package_keys Other package keys to clear, such as the keys
+	 *                                        calculated in this request.
 	 *
 	 * @return void
 	 */
-	public static function clear_session_shipping_rate_cache(): void {
+	public static function clear_session_shipping_rate_cache( array $package_keys = array() ): void {
 		if ( ! function_exists( 'WC' ) || ! WC()->session || ! WC()->cart ) {
 			return;
 		}
 
+		// As array keys, so a key from both lists ("0" and 0) is cleared once.
+		$keys = array_fill_keys( $package_keys, true );
 		foreach ( array_keys( WC()->cart->get_shipping_packages() ) as $package_key ) {
+			$keys[ $package_key ] = true;
+		}
+
+		foreach ( array_keys( $keys ) as $package_key ) {
 			WC()->session->set( 'shipping_for_package_' . $package_key, null );
 		}
 	}
@@ -299,6 +358,31 @@ final class Checkout_Rates_Options {
 	}
 
 	/**
+	 * Record the package keys WooCommerce calculated shipping for.
+	 *
+	 * Hooked to woocommerce_shipping_packages, which WC_Shipping::calculate_shipping()
+	 * applies after each calculation, whether the rates were calculated or replayed from
+	 * the session. Its keys are the session keys of the rate sets, including the
+	 * recurring package keys of WooCommerce Subscriptions, which the cart no longer
+	 * returns at shutdown. Runs first so a later callback cannot rekey the packages.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param mixed $packages Calculated packages. Returned unmodified.
+	 *
+	 * @return mixed
+	 */
+	public static function note_shipping_package_keys( $packages ) {
+		if ( is_array( $packages ) ) {
+			foreach ( array_keys( $packages ) as $package_key ) {
+				self::$calculated_package_keys[ $package_key ] = true;
+			}
+		}
+
+		return $packages;
+	}
+
+	/**
 	 * Drop package rates WooCommerce cached outside a checkout context.
 	 *
 	 * Outside a checkout context the ShipStation Rates method contributes nothing
@@ -320,13 +404,24 @@ final class Checkout_Rates_Options {
 	 * would throw away a valid rate set — including the live rates of any other carrier
 	 * sharing the package.
 	 *
+	 * The guard is per request, not per package: once one set was calculated, every
+	 * package the request touched is cleared, including a recurring set it only replayed.
+	 * Checkout quotes that package again and keeps the chosen rate, whose id comes from
+	 * the rate label.
+	 *
 	 * No rate request is fired here. Gated to when Checkout Rates is active.
+	 *
+	 * The recorded package keys are forgotten on every path, so none carry over to a
+	 * later request in the same process.
 	 *
 	 * @since 5.3.0
 	 *
 	 * @return void
 	 */
 	public static function discard_non_checkout_rate_cache(): void {
+		$package_keys                  = array_keys( self::$calculated_package_keys );
+		self::$calculated_package_keys = array();
+
 		// Cheapest guard first: short-circuits every request that cached nothing.
 		if ( ! self::$package_rates_calculated ) {
 			return;
@@ -346,7 +441,7 @@ final class Checkout_Rates_Options {
 			return;
 		}
 
-		self::clear_session_shipping_rate_cache();
+		self::clear_session_shipping_rate_cache( $package_keys );
 	}
 
 	/**

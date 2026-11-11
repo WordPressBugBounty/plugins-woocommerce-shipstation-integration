@@ -12,6 +12,10 @@
  * down only this site's local tokens, so a staging clone won't disturb the
  * original site's connection.
  *
+ * When another plugin (Jetpack, WooPayments, ...) also uses the connection, the
+ * reset would break it for that plugin, so the card explains where to fix the
+ * address instead and offers the reset only to administrators (SHIPSTN-262).
+ *
  * Rendered by templates/wpcom-controls.php.
  *
  * @package WC_ShipStation
@@ -28,10 +32,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 // globals — the prefix sniff just can't see through the include.
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound
 
-$reconnect_url = wp_nonce_url(
-	admin_url( 'admin-post.php?action=shipstation_wpcom_connect_fresh' ),
-	'shipstation_wpcom_connect_fresh'
-);
+$other_names = $connection->get_other_connection_consumer_names();
+$is_shared   = ! empty( $other_names );
+// Jetpack and its standalone plugins (Backup, Boost, ...) show their own
+// site-address notice on the dashboard, which fixes the address without a reset.
+$uses_jetpack = $connection->shares_connection_with_jetpack();
+$can_reset    = current_user_can( 'manage_options' );
 
 // Wrap the domains in <code> (matching the proxy Store URL styling) and keep
 // each on one line so they never break mid-domain at a hyphen.
@@ -56,9 +62,73 @@ $intro     = sprintf(
 <p class="description">
 	<?php echo wp_kses( $intro, array( 'code' => array( 'class' => array() ) ) ); ?>
 </p>
-<p class="description">
-	<?php esc_html_e( 'Reconnect to fix it. This re-establishes the connection as a new site, so afterward copy the new Store URL shown here into ShipStation.', 'woocommerce-shipstation-integration' ); ?>
-</p>
-<p>
-	<a href="<?php echo esc_url( $reconnect_url ); ?>" class="button button-primary"><?php esc_html_e( 'Reconnect to WordPress.com', 'woocommerce-shipstation-integration' ); ?></a>
-</p>
+<?php
+if ( $is_shared ) :
+	// One translatable string per paragraph, so translators see each sentence in context.
+	$names_list = wp_sprintf( '%l', $other_names );
+	$shared_by  = sprintf(
+		/* translators: %s: the other plugins that use the WordPress.com connection, for example "Jetpack" or "Jetpack and WooPayments". */
+		_n(
+			'%s also uses this WordPress.com connection, so ShipStation won\'t reset it on its own.',
+			'%s also use this WordPress.com connection, so ShipStation won\'t reset it on its own.',
+			count( $other_names ),
+			'woocommerce-shipstation-integration'
+		),
+		$names_list
+	);
+	if ( $uses_jetpack && $can_reset ) {
+		$how_to_fix = __( 'To fix the address, use the Jetpack notice about your site address on the dashboard, or reset the connection below.', 'woocommerce-shipstation-integration' );
+	} elseif ( $uses_jetpack ) {
+		$how_to_fix = __( 'To fix the address, use the Jetpack notice about your site address on the dashboard, or ask an administrator to reset the connection from this page.', 'woocommerce-shipstation-integration' );
+	} elseif ( $can_reset ) {
+		$how_to_fix = __( 'To fix the address, reset the connection below.', 'woocommerce-shipstation-integration' );
+	} else {
+		$how_to_fix = __( 'To fix the address, ask an administrator to reset the connection from this page.', 'woocommerce-shipstation-integration' );
+	}
+	?>
+	<p class="description">
+		<?php echo esc_html( $shared_by ); ?>
+	</p>
+	<p class="description">
+		<?php echo esc_html( $how_to_fix ); ?>
+	</p>
+	<p class="description">
+		<?php esc_html_e( 'Until then, ShipStation can keep syncing if you set its Store URL to the value shown in the Credentials section below.', 'woocommerce-shipstation-integration' ); ?>
+	</p>
+	<?php
+	if ( $can_reset ) :
+		$force_url = wp_nonce_url(
+			admin_url( 'admin-post.php?action=shipstation_wpcom_connect_fresh_force' ),
+			'shipstation_wpcom_connect_fresh_force'
+		);
+		?>
+		<p class="description" id="shipstation-wpcom-reset-warning">
+			<?php
+			echo esc_html(
+				sprintf(
+					/* translators: %s: the other plugins that use the WordPress.com connection, for example "Jetpack" or "Jetpack and WooPayments". */
+					__( 'Resetting the connection disconnects %s too, and each user will need to reconnect their WordPress.com account. Afterward, copy the new Store URL shown here into ShipStation.', 'woocommerce-shipstation-integration' ),
+					$names_list
+				)
+			);
+			?>
+		</p>
+		<p>
+			<a href="<?php echo esc_url( $force_url ); ?>" class="button" aria-describedby="shipstation-wpcom-reset-warning"><?php esc_html_e( 'Reset the connection anyway', 'woocommerce-shipstation-integration' ); ?></a>
+		</p>
+		<?php
+	endif;
+else :
+	$reconnect_url = wp_nonce_url(
+		admin_url( 'admin-post.php?action=shipstation_wpcom_connect_fresh' ),
+		'shipstation_wpcom_connect_fresh'
+	);
+	?>
+	<p class="description">
+		<?php esc_html_e( 'Reconnect to fix it. This re-establishes the connection as a new site, so afterward copy the new Store URL shown here into ShipStation.', 'woocommerce-shipstation-integration' ); ?>
+	</p>
+	<p>
+		<a href="<?php echo esc_url( $reconnect_url ); ?>" class="button button-primary"><?php esc_html_e( 'Reconnect to WordPress.com', 'woocommerce-shipstation-integration' ); ?></a>
+	</p>
+	<?php
+endif;

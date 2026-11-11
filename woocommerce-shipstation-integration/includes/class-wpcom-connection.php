@@ -52,6 +52,23 @@ class WPCOM_Connection {
 	const ACTION_DISCONNECT_SHARED = 'disconnect_shared';
 
 	/**
+	 * Outcome flow: connect fresh was refused because another plugin still uses
+	 * the WordPress.com connection. Resetting it would break that plugin, so the
+	 * plain link only explains why; an administrator can use the separate reset
+	 * action instead.
+	 */
+	const ACTION_CONNECT_FRESH_SHARED = 'connect_fresh_shared';
+
+	/**
+	 * Outcome flow: connect fresh or the forced reset tore the connection down,
+	 * but registering the site again or building the authorize link failed. The
+	 * site is left disconnected, so the notice gives the reason and says how to
+	 * finish. The reason and, for the forced reset, the other plugin names are
+	 * kept in {@see ACTION_DETAIL_TRANSIENT}.
+	 */
+	const ACTION_CONNECT_FRESH_FAILED = 'connect_fresh_failed';
+
+	/**
 	 * Jetpack connection-consumer slugs that do NOT count as "another plugin"
 	 * when deciding whether a disconnect is safe.
 	 *
@@ -135,6 +152,13 @@ class WPCOM_Connection {
 	const ACTION_TRANSIENT_TTL = 90;
 
 	/**
+	 * Per-user transient carrying the details a pending action's notice needs
+	 * (for {@see ACTION_CONNECT_FRESH_FAILED}: the reason and the other plugin
+	 * names). Set and cleared together with {@see ACTION_TRANSIENT}.
+	 */
+	const ACTION_DETAIL_TRANSIENT = 'shipstation_wpcom_action_detail';
+
+	/**
 	 * Cached Jetpack Connection Manager instance.
 	 *
 	 * @var Jetpack_Connection_Manager|null
@@ -187,6 +211,9 @@ class WPCOM_Connection {
 		// a NEW site (new blog id / proxy URL). The local-only teardown leaves any
 		// original site it was cloned from untouched.
 		add_action( 'admin_post_shipstation_wpcom_connect_fresh', array( $this, 'handle_connect_fresh_action' ) );
+		// Administrator-only reset for a moved site whose connection another plugin
+		// also uses (SHIPSTN-262). Separate nonce action and manage_options.
+		add_action( 'admin_post_shipstation_wpcom_connect_fresh_force', array( $this, 'handle_connect_fresh_force_action' ) );
 		// Surgical: only intercept the Calypso post-authorize landing on
 		// `?page=jetpack`. Other denied admin pages keep their normal
 		// "Sorry, you are not allowed to access this page." wp_die.
@@ -349,26 +376,111 @@ class WPCOM_Connection {
 	 *
 	 * WooCommerce core is excluded ({@see BASELINE_CONNECTION_SLUGS}) because it
 	 * registers the connection unconditionally on every store; counting it would
-	 * suppress the disconnect control everywhere.
-	 *
-	 * Reads Plugin_Storage, configured on plugins_loaded; this runs on admin_post
-	 * / settings render (both later). Unknown state (package missing, WP_Error,
-	 * not yet configured) is treated as "no other consumers" so disconnect stays
-	 * available rather than being silently blocked.
+	 * suppress the disconnect control everywhere. An unknown registry reads as
+	 * false; see {@see get_other_connection_consumers()}.
 	 *
 	 * @return bool
 	 */
 	public function has_other_connection_consumers(): bool {
+		return ! empty( $this->get_other_connection_consumers() );
+	}
+
+	/**
+	 * Slugs of the plugins that hold the WordPress.com connection besides
+	 * WooCommerce core and ShipStation.
+	 *
+	 * Reads Plugin_Storage, which is configured on plugins_loaded; callers run
+	 * on admin_post or the settings render, both later. When the registry is
+	 * unknown (connection package missing, or get_all() returns a WP_Error
+	 * because it is not configured yet) this returns an empty list, so the
+	 * disconnect control stays available rather than being silently blocked.
+	 * A WP_Error is logged. Connect fresh does not rely on the empty list: it
+	 * also checks {@see is_connection_registry_unknown()} and refuses.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @return string[]
+	 */
+	public function get_other_connection_consumers(): array {
+		return array_keys( $this->get_other_connection_consumer_entries() );
+	}
+
+	/**
+	 * Display names of the plugins from {@see get_other_connection_consumers()},
+	 * in the same order, for the repair card and the notices. A plugin that
+	 * registered without a name is listed by its slug.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @return string[]
+	 */
+	public function get_other_connection_consumer_names(): array {
+		$names = array();
+		foreach ( $this->get_other_connection_consumer_entries() as $slug => $args ) {
+			$name    = is_array( $args ) && isset( $args['name'] ) && is_string( $args['name'] ) ? trim( $args['name'] ) : '';
+			$names[] = '' !== $name ? $name : $slug;
+		}
+		return $names;
+	}
+
+	/**
+	 * Whether Jetpack, or a standalone Jetpack plugin such as Jetpack Backup,
+	 * Boost or Protect, is among the other consumers. Their slugs all start
+	 * with "jetpack", and they show Jetpack's site-address notice on the
+	 * dashboard, which is where the address is fixed without a reset.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @return bool
+	 */
+	public function shares_connection_with_jetpack(): bool {
+		foreach ( $this->get_other_connection_consumers() as $slug ) {
+			if ( 0 === strpos( $slug, 'jetpack' ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Registry entries (slug => registration arguments) of the plugins that
+	 * hold the connection besides WooCommerce core and ShipStation. Empty when
+	 * the registry is unknown; see {@see get_other_connection_consumers()}.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function get_other_connection_consumer_entries(): array {
 		if ( ! class_exists( Jetpack_Plugin_Storage::class ) ) {
-			return false;
+			return array();
 		}
 		$plugins = Jetpack_Plugin_Storage::get_all();
+		if ( is_wp_error( $plugins ) ) {
+			Logger::warning( 'WPCOM: plugin registry unavailable: ' . $plugins->get_error_message() );
+			return array();
+		}
 		if ( ! is_array( $plugins ) ) {
-			return false;
+			return array();
 		}
 		$ignored = array_merge( array( self::SLUG ), self::BASELINE_CONNECTION_SLUGS );
-		$others  = array_diff( array_keys( $plugins ), $ignored );
-		return ! empty( $others );
+		$entries = array();
+		foreach ( $plugins as $slug => $args ) {
+			$slug = (string) $slug;
+			if ( ! in_array( $slug, $ignored, true ) ) {
+				$entries[ $slug ] = $args;
+			}
+		}
+		return $entries;
+	}
+
+	/**
+	 * Whether the Jetpack plugin registry cannot be read, so it is unknown which
+	 * plugins use the connection: the connection package is missing or
+	 * Plugin_Storage::get_all() returns a WP_Error (not yet configured).
+	 *
+	 * @return bool
+	 */
+	private function is_connection_registry_unknown(): bool {
+		return ! class_exists( Jetpack_Plugin_Storage::class ) || is_wp_error( Jetpack_Plugin_Storage::get_all() );
 	}
 
 	/**
@@ -462,6 +574,40 @@ class WPCOM_Connection {
 	}
 
 	/**
+	 * Listen for any plugin re-registering the site with WordPress.com.
+	 *
+	 * Called from Main::init() for every request, outside the bootstrap() gate:
+	 * Jetpack's "Start fresh" runs over REST, where bootstrap() does not run
+	 * while the transport toggle is off. Safe to call more than once.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @return void
+	 */
+	public static function register_url_restamp(): void {
+		if ( false === has_action( 'jetpack_site_registered', array( __CLASS__, 'restamp_connected_url' ) ) ) {
+			add_action( 'jetpack_site_registered', array( __CLASS__, 'restamp_connected_url' ) );
+		}
+	}
+
+	/**
+	 * Record the current site URL after a re-registration, so a repair done in
+	 * another plugin (for example Jetpack's "Start fresh") clears the repair
+	 * card. Does nothing when no URL is recorded yet; the settings page
+	 * backfills one later ({@see backfill_connected_url()}).
+	 *
+	 * @since 5.4.1
+	 *
+	 * @return void
+	 */
+	public static function restamp_connected_url(): void {
+		if ( '' === (string) get_option( self::CONNECTED_URL_OPTION, '' ) ) {
+			return;
+		}
+		update_option( self::CONNECTED_URL_OPTION, home_url(), false );
+	}
+
+	/**
 	 * Clear the recorded connect URL (on disconnect).
 	 *
 	 * @return void
@@ -539,7 +685,7 @@ class WPCOM_Connection {
 
 	/**
 	 * Admin-post handler: re-establish the WordPress.com connection as a NEW site
-	 * after the site address changed (slice 4 — the only heal path).
+	 * after the site address changed (slice 4).
 	 *
 	 * When the domain changes, the connection is bound to a dead URL. Keeping the
 	 * same blog id across a domain change would require jetpack-sync's IDC migrate
@@ -547,21 +693,90 @@ class WPCOM_Connection {
 	 * supported fix is a fresh connection: WordPress.com mints a NEW blog id / proxy
 	 * URL, and the merchant updates ShipStation's Store URL afterward.
 	 *
-	 * The teardown is LOCAL ONLY — `disconnect_site( false, … )` drops this site's
-	 * tokens without telling WordPress.com to deregister — so if this is a staging
-	 * clone of another site, the original site's WordPress.com record is untouched.
-	 * `$ignore_connected_plugins = true` lets the local clear proceed even though
-	 * WooCommerce core also registered the connection (each plugin re-registers).
+	 * Runs only on a moved site, and only when no other plugin uses the
+	 * connection; otherwise it explains why and changes nothing. The checks and
+	 * the teardown are in {@see reset_connection_and_authorize()}.
 	 */
 	public function handle_connect_fresh_action(): void {
 		$this->assert_admin_action_allowed( 'shipstation_wpcom_connect_fresh' );
+		$this->reset_connection_and_authorize( 'connect-fresh', false );
+	}
+
+	/**
+	 * Admin-post handler: the administrator-only reset for a moved site whose
+	 * connection another plugin also uses. Runs the same teardown as connect
+	 * fresh, so that plugin and every user's WordPress.com link need
+	 * reconnecting afterward. Has its own nonce action and needs manage_options,
+	 * so the plain connect-fresh link can never reach it.
+	 *
+	 * @since 5.4.1
+	 */
+	public function handle_connect_fresh_force_action(): void {
+		$this->assert_admin_action_allowed( 'shipstation_wpcom_connect_fresh_force', 'manage_options' );
+		$this->reset_connection_and_authorize( 'connect-fresh-force', true );
+	}
+
+	/**
+	 * Drop this site's Jetpack tokens locally, register again as a new site and
+	 * send the merchant to the authorize step. Shared by the connect-fresh and
+	 * force handlers. It returns to the settings tab without a change when the
+	 * site has not moved, and, unless forced, when another plugin uses the
+	 * connection or the plugin registry is unknown.
+	 *
+	 * If registering again or building the authorize link fails, the teardown is
+	 * not rolled back: the site is left disconnected, the failure is logged and
+	 * {@see ACTION_CONNECT_FRESH_FAILED} queues a notice with the reason.
+	 *
+	 * The teardown is local only: `disconnect_site( false, ... )` does not tell
+	 * WordPress.com to deregister, so the site this one was cloned from keeps its
+	 * record. `$ignore_connected_plugins = true` lets the clear run although
+	 * WooCommerce core also registered the connection.
+	 *
+	 * @param string $flow   Flow name for the log lines: 'connect-fresh' or 'connect-fresh-force'.
+	 * @param bool   $forced True for the administrator-only reset, which goes ahead although
+	 *                       other plugins use the connection.
+	 * @return void
+	 */
+	private function reset_connection_and_authorize( string $flow, bool $forced ): void {
+		// The link is only shown on a moved site, but its nonce lives for hours.
+		// A replayed or stale link must not reset a connection that is healthy now.
+		if ( ! $this->has_url_mismatch() ) {
+			$this->redirect_to_settings();
+			return;
+		}
+
+		$other_consumers = $this->get_other_connection_consumers();
+
+		// Another plugin (Jetpack, WooPayments, ...) uses the same connection, and the
+		// teardown below drops it for that plugin too. Explain instead; an
+		// administrator can still reset through handle_connect_fresh_force_action().
+		// An unknown registry may hide such a plugin, so it is refused the same way.
+		if ( ! $forced && ( ! empty( $other_consumers ) || $this->is_connection_registry_unknown() ) ) {
+			$this->set_action( self::ACTION_CONNECT_FRESH_SHARED );
+			$this->redirect_to_settings();
+			return;
+		}
+
+		// Names for the failure notice, read before the teardown below.
+		$other_names = $this->get_other_connection_consumer_names();
+
+		// An administrator choosing to reset a shared connection is not an error,
+		// but it is worth an audit line: which plugins lose the connection with it.
+		if ( $forced ) {
+			Logger::warning(
+				empty( $other_consumers )
+					? 'WPCOM ' . $flow . ': resetting the connection; no other plugin uses it any more.'
+					: 'WPCOM ' . $flow . ': resetting the connection for other plugins too: ' . implode( ', ', $other_consumers )
+			);
+		}
+
 		$this->maybe_persist_transport_toggle();
 		$this->clear_disconnect_intent();
 		$this->set_action( self::ACTION_CONNECT );
 
 		$manager = $this->get_manager();
 		if ( null === $manager ) {
-			Logger::error( 'WPCOM connect-fresh: Jetpack Connection Manager unavailable (autoloader not ready).' );
+			Logger::error( 'WPCOM ' . $flow . ': Jetpack Connection Manager unavailable (autoloader not ready).' );
 			$this->redirect_to_settings();
 			return;
 		}
@@ -574,7 +789,8 @@ class WPCOM_Connection {
 
 		$result = $manager->try_registration();
 		if ( is_wp_error( $result ) ) {
-			Logger::error( 'WPCOM connect-fresh: site registration failed: ' . $result->get_error_message() );
+			Logger::error( 'WPCOM ' . $flow . ': site registration failed: ' . $result->get_error_message() );
+			$this->report_reset_failure( $result->get_error_message(), $other_names );
 			$this->redirect_to_settings();
 			return;
 		}
@@ -582,13 +798,37 @@ class WPCOM_Connection {
 
 		$url = $this->get_authorize_url();
 		if ( null === $url ) {
-			Logger::error( 'WPCOM connect-fresh: could not build the authorize URL.' );
+			Logger::error( 'WPCOM ' . $flow . ': could not build the authorize URL.' );
+			$this->report_reset_failure( __( 'the WordPress.com authorization link could not be built', 'woocommerce-shipstation-integration' ), $other_names );
 			$this->redirect_to_settings();
 			return;
 		}
 
 		wp_safe_redirect( $url );
 		exit;
+	}
+
+	/**
+	 * Queue the failed-reset notice with its reason and the other plugin names.
+	 *
+	 * @param string   $reason          Why the site could not be registered again.
+	 * @param string[] $other_consumers Names of the other plugins the reset disconnected.
+	 * @return void
+	 */
+	private function report_reset_failure( string $reason, array $other_consumers ): void {
+		$this->set_action( self::ACTION_CONNECT_FRESH_FAILED );
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 ) {
+			return;
+		}
+		set_transient(
+			self::ACTION_DETAIL_TRANSIENT . '_' . $user_id,
+			array(
+				'reason'          => $reason,
+				'other_consumers' => array_values( array_map( 'strval', $other_consumers ) ),
+			),
+			self::ACTION_TRANSIENT_TTL
+		);
 	}
 
 	/**
@@ -775,10 +1015,33 @@ class WPCOM_Connection {
 		if ( '' === $action ) {
 			return;
 		}
+		$detail = $this->get_action_detail();
 		$this->clear_action();
 
+		// Connect fresh or the forced reset dropped the connection but could not
+		// register the site again, so the site is now disconnected.
+		if ( self::ACTION_CONNECT_FRESH_FAILED === $action ) {
+			printf(
+				'<div class="notice notice-error is-dismissible"><p>%s</p></div>',
+				esc_html( $this->reset_failure_message( $detail ) )
+			);
+			return;
+		}
+
+		// Connect fresh refused because another plugin still uses the connection.
+		// Informational, not an error. The repair card below already shows the
+		// steps for each role, so the notice only points at it.
+		if ( self::ACTION_CONNECT_FRESH_SHARED === $action ) {
+			printf(
+				'<div class="notice notice-info is-dismissible"><p>%s</p></div>',
+				/* translators: "WordPress.com connection needs repair" is the status label shown below; use the same translation. */
+				esc_html__( 'The WordPress.com connection wasn\'t reset because another plugin also uses it. See the steps under "WordPress.com connection needs repair" below.', 'woocommerce-shipstation-integration' )
+			);
+			return;
+		}
+
 		// Disconnect intentionally refused because other plugins still use the
-		// WordPress.com connection — informational, not an error. Point the
+		// WordPress.com connection. Informational, not an error. Point the
 		// merchant at the transport toggle, which is the real lever for
 		// ShipStation (its label is defined in includes/data/data-settings.php).
 		if ( self::ACTION_DISCONNECT_SHARED === $action ) {
@@ -802,6 +1065,35 @@ class WPCOM_Connection {
 			esc_attr( $success ? 'notice notice-success' : 'notice notice-error' ),
 			esc_html( $message )
 		);
+	}
+
+	/**
+	 * Build the failed-reset notice text.
+	 *
+	 * @param array $detail Stored detail: 'reason' (string) and 'other_consumers' (string[]).
+	 * @return string Translated, user-facing message text.
+	 */
+	private function reset_failure_message( array $detail ): string {
+		$reason = isset( $detail['reason'] ) && is_string( $detail['reason'] ) && '' !== $detail['reason']
+			? rtrim( $detail['reason'], '. ' )
+			: __( 'unknown error', 'woocommerce-shipstation-integration' );
+
+		$message = sprintf(
+			/* translators: %s: the reason WordPress.com gave, for example "Verification secrets are missing". */
+			__( 'The WordPress.com connection was reset, but the site could not be registered again: %s. Use Connect to WordPress.com to finish. If it fails again, wait a minute and retry.', 'woocommerce-shipstation-integration' ),
+			$reason
+		);
+
+		$others = isset( $detail['other_consumers'] ) && is_array( $detail['other_consumers'] ) ? array_filter( array_map( 'strval', $detail['other_consumers'] ) ) : array();
+		if ( ! empty( $others ) ) {
+			$message .= ' ' . sprintf(
+				/* translators: %s: the other plugins that used the connection, for example "Jetpack and WooPayments". */
+				_n( '%s also lost the connection and needs to be reconnected.', '%s also lost the connection and need to be reconnected.', count( $others ), 'woocommerce-shipstation-integration' ),
+				wp_sprintf( '%l', array_values( $others ) )
+			);
+		}
+
+		return $message;
 	}
 
 	/**
@@ -835,7 +1127,7 @@ class WPCOM_Connection {
 	private function is_known_action( string $action ): bool {
 		return in_array(
 			$action,
-			array( self::ACTION_CONNECT, self::ACTION_DISCONNECT, self::ACTION_DISCONNECT_SHARED ),
+			array( self::ACTION_CONNECT, self::ACTION_DISCONNECT, self::ACTION_DISCONNECT_SHARED, self::ACTION_CONNECT_FRESH_SHARED, self::ACTION_CONNECT_FRESH_FAILED ),
 			true
 		);
 	}
@@ -846,7 +1138,8 @@ class WPCOM_Connection {
 	 * Rejects unknown action identifiers so typos fail loudly rather than rendering
 	 * the wrong notice branch.
 	 *
-	 * @param string $action One of self::ACTION_CONNECT, self::ACTION_DISCONNECT, or self::ACTION_DISCONNECT_SHARED.
+	 * @param string $action One of self::ACTION_CONNECT, self::ACTION_DISCONNECT, self::ACTION_DISCONNECT_SHARED,
+	 *                       self::ACTION_CONNECT_FRESH_SHARED, or self::ACTION_CONNECT_FRESH_FAILED.
 	 */
 	private function set_action( string $action ): void {
 		if ( ! $this->is_known_action( $action ) ) {
@@ -880,7 +1173,21 @@ class WPCOM_Connection {
 	}
 
 	/**
-	 * Clear the current user's pending action.
+	 * Read the current user's pending action detail, or an empty array.
+	 *
+	 * @return array
+	 */
+	private function get_action_detail(): array {
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 ) {
+			return array();
+		}
+		$detail = get_transient( self::ACTION_DETAIL_TRANSIENT . '_' . $user_id );
+		return is_array( $detail ) ? $detail : array();
+	}
+
+	/**
+	 * Clear the current user's pending action and its detail.
 	 */
 	private function clear_action(): void {
 		$user_id = get_current_user_id();
@@ -888,6 +1195,7 @@ class WPCOM_Connection {
 			return;
 		}
 		delete_transient( self::ACTION_TRANSIENT . '_' . $user_id );
+		delete_transient( self::ACTION_DETAIL_TRANSIENT . '_' . $user_id );
 	}
 
 	/**
@@ -955,18 +1263,19 @@ class WPCOM_Connection {
 	 * with a clear message on failure.
 	 *
 	 * @param string $nonce_action Nonce action name to verify.
+	 * @param string $capability   Capability the current user needs.
 	 *
 	 * @return void
 	 */
-	private function assert_admin_action_allowed( string $nonce_action ): void {
+	private function assert_admin_action_allowed( string $nonce_action, string $capability = 'manage_woocommerce' ): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Verified immediately below.
 		$nonce = isset( $_REQUEST['_wpnonce'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['_wpnonce'] ) ) : '';
 		if ( ! wp_verify_nonce( $nonce, $nonce_action ) ) {
 			wp_die( esc_html__( 'Security check failed.', 'woocommerce-shipstation-integration' ) );
 		}
-		// phpcs:ignore WordPress.WP.Capabilities.Unknown -- WooCommerce capability.
-		if ( ! current_user_can( 'manage_woocommerce' ) ) {
-			wp_die( esc_html__( 'You do not have sufficient permissions.', 'woocommerce-shipstation-integration' ) );
+		// phpcs:ignore WordPress.WP.Capabilities.Undetermined -- manage_woocommerce by default, manage_options for the forced reset.
+		if ( ! current_user_can( $capability ) ) {
+			wp_die( esc_html__( 'You do not have sufficient permissions.', 'woocommerce-shipstation-integration' ), '', array( 'response' => 403 ) );
 		}
 	}
 

@@ -180,7 +180,7 @@ final class Checkout_Rates_Request_Builder {
 		$weight_unit_raw  = get_option( 'woocommerce_weight_unit' );
 		$currency         = get_woocommerce_currency();
 		$price_decimals   = wc_get_price_decimals();
-		$send_description = Features::is_gpdt_enabled();
+		$send_gpdt_fields = Features::is_gpdt_enabled();
 
 		$items          = array();
 		$pre_item_items = array();
@@ -254,8 +254,10 @@ final class Checkout_Rates_Request_Builder {
 				),
 			);
 
-			if ( $send_description ) {
-				$line_item['description'] = $this->build_item_description( $product );
+			if ( $send_gpdt_fields ) {
+				$line_item['description']    = $this->build_item_description( $product );
+				$line_item['hs_code']        = $this->get_customs_value( $product, 'get_customs_commodity_code' );
+				$line_item['origin_country'] = $this->get_customs_value( $product, 'get_customs_country_of_origin' );
 			}
 
 			$dimensions = $this->build_item_dimensions( $product );
@@ -290,6 +292,29 @@ final class Checkout_Rates_Request_Builder {
 		 * @param array $package The WooCommerce shipping package.
 		 */
 		return apply_filters( 'woocommerce_shipstation_checkout_rates_items', $items, $package );
+	}
+
+	/**
+	 * Get a product customs value, or an empty string when there is none.
+	 *
+	 * WooCommerce 11.3 added the customs getters, so older versions send an empty string.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param WC_Product $product Product in the cart.
+	 * @param string     $getter  Customs getter name.
+	 *
+	 * @return string
+	 */
+	private function get_customs_value( WC_Product $product, string $getter ): string {
+		if ( ! is_callable( array( $product, $getter ) ) ) {
+			return '';
+		}
+
+		// Getters return null when no value is stored, and filters can return anything.
+		$value = $product->$getter();
+
+		return is_string( $value ) || is_int( $value ) ? (string) $value : '';
 	}
 
 	/**

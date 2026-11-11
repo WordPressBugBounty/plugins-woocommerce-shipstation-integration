@@ -15,6 +15,7 @@ use WooCommerce\Shipping\ShipStation\Logger;
 use WooCommerce\Shipping\ShipStation\Auth_Controller;
 use WooCommerce\Shipping\ShipStation\Connection_Log;
 use WooCommerce\Shipping\ShipStation\Features;
+use WooCommerce\Shipping\ShipStation\API\REST\API_Controller;
 use WooCommerce\Shipping\ShipStation\Checkout\Checkout_Rates_Options;
 
 // phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedClassFound -- Legacy public class name retained for backward compatibility.
@@ -95,6 +96,13 @@ class WC_ShipStation_Integration extends WC_Integration {
 	 * @var string
 	 */
 	public const ON_HOLD_STATUS = 'OnHold';
+
+	/**
+	 * Transient prefix that throttles the skipped settings sync warning, per key and setting.
+	 *
+	 * @since 5.4.1
+	 */
+	public const SETTINGS_SYNC_SKIPPED_TRANSIENT = 'wc_shipstation_settings_sync_skipped';
 
 	/**
 	 * ShipStation status for completed.
@@ -259,8 +267,8 @@ class WC_ShipStation_Integration extends WC_Integration {
 		add_filter( 'woocommerce_subscriptions_renewal_order_meta_query', array( $this, 'subscriptions_renewal_order_meta_query' ), 10, 4 );
 		add_action( 'wp_loaded', array( $this, 'hide_notices' ) );
 		add_filter( 'woocommerce_translations_updates_for_woocommerce_shipstation_integration', '__return_true' );
-		add_action( 'woocommerce_shipstation_get_orders_before_process_request', array( $this, 'maybe_update_api_mode' ), 10, 1 );
-		add_action( 'woocommerce_shipstation_get_orders_before_process_request', array( $this, 'maybe_save_status_mapping' ), 15, 1 );
+		add_action( 'woocommerce_shipstation_get_orders_before_process_request', array( $this, 'maybe_update_api_mode' ), 10, 2 );
+		add_action( 'woocommerce_shipstation_get_orders_before_process_request', array( $this, 'maybe_save_status_mapping' ), 15, 2 );
 
 		$hide_notice               = get_option( 'wc_shipstation_hide_activate_notice', '' );
 		$settings_notice_dismissed = get_user_meta( get_current_user_id(), 'dismissed_shipstation-setup_notice', true );
@@ -665,12 +673,20 @@ class WC_ShipStation_Integration extends WC_Integration {
 	/**
 	 * Update API Mode.
 	 *
+	 * @since 5.4.1 Added the $key_can_write parameter.
+	 *
 	 * @param array $request_params Request parameters.
+	 * @param bool  $key_can_write  Whether the request may change settings.
 	 */
-	public function maybe_update_api_mode( $request_params ) {
+	public function maybe_update_api_mode( $request_params, $key_can_write = true ) {
 		$api_mode = $this->get_option( 'api_mode', '' );
 
 		if ( 'REST' === $api_mode ) {
+			return;
+		}
+
+		if ( ! $key_can_write ) {
+			self::warn_settings_sync_skipped( 'a switch to the REST API' );
 			return;
 		}
 
@@ -682,9 +698,12 @@ class WC_ShipStation_Integration extends WC_Integration {
 	/**
 	 * Save status mapping.
 	 *
+	 * @since 5.4.1 Added the $key_can_write parameter.
+	 *
 	 * @param array $request_params Request parameter.
+	 * @param bool  $key_can_write  Whether the request may change settings.
 	 */
-	public function maybe_save_status_mapping( $request_params ) {
+	public function maybe_save_status_mapping( $request_params, $key_can_write = true ) {
 		if ( empty( $request_params['status_mapping'] ) ) {
 			return;
 		}
@@ -692,6 +711,11 @@ class WC_ShipStation_Integration extends WC_Integration {
 		$mapping_mode = $this->get_option( 'status_mode', '' );
 
 		if ( self::STATUS_MODE_PLUGIN === $mapping_mode ) {
+			return;
+		}
+
+		if ( ! $key_can_write ) {
+			self::warn_settings_sync_skipped( 'a status mapping' );
 			return;
 		}
 
@@ -750,6 +774,60 @@ class WC_ShipStation_Integration extends WC_Integration {
 			'the status-mapping log write',
 			static function () use ( $log_info ) {
 				Logger::debug( 'Status has been mapped', $log_info );
+			}
+		);
+	}
+
+	/**
+	 * Warn that a settings change sent by ShipStation was not saved because the
+	 * request may not change settings.
+	 *
+	 * Logged as a warning, so the merchant sees it with debug logging off, at
+	 * most once an hour per API key and setting. The throttle is armed only
+	 * after the log write lands, and every call is contained like the export
+	 * warnings, so a failing log handler or transient store cannot break the poll.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param string $setting What was not saved, for the log line.
+	 * @return void
+	 */
+	private static function warn_settings_sync_skipped( string $setting ) {
+		$key_id       = class_exists( API_Controller::class ) ? API_Controller::current_request_key_id() : 0;
+		$throttle_key = self::SETTINGS_SYNC_SKIPPED_TRANSIENT . '_' . md5( $key_id . '|' . $setting );
+		$armed        = false;
+
+		Order_Util::dispatch_safely(
+			'the settings-sync warning throttle read',
+			static function () use ( $throttle_key, &$armed ) {
+				$armed = false !== get_transient( $throttle_key );
+			}
+		);
+
+		if ( $armed ) {
+			return;
+		}
+
+		$logged = Order_Util::log_isolated(
+			'the settings-sync warning',
+			static function () use ( $setting ) {
+				Logger::warning(
+					sprintf(
+						'ShipStation sent %s, but it was not saved: the request may not change settings. Give ShipStation a WooCommerce REST API key with Read/Write permission to sync settings.',
+						$setting
+					)
+				);
+			}
+		);
+
+		if ( ! $logged ) {
+			return;
+		}
+
+		Order_Util::dispatch_safely(
+			'the settings-sync warning throttle write',
+			static function () use ( $throttle_key ) {
+				set_transient( $throttle_key, 1, HOUR_IN_SECONDS );
 			}
 		);
 	}

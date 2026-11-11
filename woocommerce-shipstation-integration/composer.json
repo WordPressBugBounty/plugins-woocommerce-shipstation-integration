@@ -37,7 +37,7 @@
     "require-dev": {
         "wp-coding-standards/wpcs": "*",
         "dealerdirect/phpcodesniffer-composer-installer": "*",
-        "woocommerce/qit-cli": "*",
+        "woocommerce/qit-cli": "^1.2.4",
         "woocommerce/woocommerce-sniffs": "*",
         "phpstan/phpstan": "^2",
         "szepeviktor/phpstan-wordpress": "^2",

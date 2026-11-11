@@ -17,6 +17,7 @@ use WC_Order;
 use WP_Error;
 use WP_HTML_Tag_Processor;
 use Automattic\WooCommerce\Blocks\Domain\Services\CheckoutFields;
+use Automattic\WooCommerce\Blocks\Package;
 use WC_ShipStation_Integration;
 
 /**
@@ -538,7 +539,8 @@ class Checkout {
 	/**
 	 * Displays gift fields for the customer order detail views if conditions are met.
 	 * Shows gift details only if:
-	 * - Order was created via checkout OR using a block theme
+	 * - Order was created via the classic checkout
+	 * - WooCommerce does not show the gift fields itself
 	 * - Gift fields data exists
 	 * - Order is marked as a gift
 	 *
@@ -554,7 +556,7 @@ class Checkout {
 		}
 
 		$created_via_checkout = 'checkout' === $order->get_created_via();
-		if ( ! $created_via_checkout ) {
+		if ( ! $created_via_checkout || $this->woocommerce_renders_gift_fields( $order ) ) {
 			return;
 		}
 
@@ -580,6 +582,22 @@ class Checkout {
 	}
 
 	/**
+	 * Whether WooCommerce has the order's gift fields to show itself.
+	 *
+	 * WooCommerce 11.3 and above also show additional fields on classic-checkout orders, so the plugin's own
+	 * output would repeat them. What each field shows is then up to filter_fields_for_order_confirmation().
+	 *
+	 * @param WC_Order $order Order.
+	 *
+	 * @return bool
+	 */
+	private function woocommerce_renders_gift_fields( WC_Order $order ): bool {
+		$fields = Package::container()->get( CheckoutFields::class )->get_order_additional_fields_with_values( $order, 'order' );
+
+		return isset( $fields[ self::get_namespaced_field_key( 'is_gift' ) ] );
+	}
+
+	/**
 	 * Show or hide gift fields based on conditions.
 	 *
 	 * @param bool  $show_field Should field be shown flag.
@@ -593,7 +611,8 @@ class Checkout {
 		}
 
 		if ( self::get_namespaced_field_key( 'is_gift' ) === $field['id'] ) {
-			return isset( $field['value'] ) && 'Yes' === $field['value'] ? true : false;
+			// WooCommerce formats a checked checkbox with its own translated "Yes".
+			return __( 'Yes', 'woocommerce' ) === ( $field['value'] ?? null ); // phpcs:ignore WordPress.WP.I18n.TextDomainMismatch -- Matches WooCommerce's own string.
 		}
 
 		if ( self::get_namespaced_field_key( 'gift_message' ) === $field['id'] ) {
@@ -878,8 +897,8 @@ class Checkout {
 			return;
 		}
 
-		// Block Checkout (Store API) already includes gift field data in emails, so skip.
-		if ( 'store-api' === $order->get_created_via() ) {
+		// Skip when WooCommerce adds the gift fields to the email itself: block orders, and classic orders on 11.3+.
+		if ( 'store-api' === $order->get_created_via() || $this->woocommerce_renders_gift_fields( $order ) ) {
 			return;
 		}
 

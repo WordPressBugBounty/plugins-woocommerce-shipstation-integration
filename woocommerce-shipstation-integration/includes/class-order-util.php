@@ -521,15 +521,116 @@ class Order_Util {
 	 * @return string Rate code (e.g. 'dos_…'), or '' when absent.
 	 */
 	public static function get_checkout_rate_code( WC_Order $order ): string {
+		return self::get_shipping_item_meta( $order, Checkout\Checkout_Rates_Options::RATE_CODE_META_KEY );
+	}
+
+	/**
+	 * Get the GPDT rate ID stored on the order's shipping item(s).
+	 *
+	 * Reads the protected meta written when the customer selects a GPDT rate at
+	 * checkout. Returns the ID of the shipping item the prepaid duties fee tag
+	 * names, else the first non-empty ID found across the order's shipping
+	 * items (see get_gpdt_shipping_item()), or '' when none carry one. A
+	 * rolled-in package has an ID but no duties, so the first ID can belong to
+	 * a package the fee does not charge. The REST export maps this to
+	 * shipping_preferences.gpdt_rate_id and adds the duties object only when it
+	 * is present. It does not check Features::is_gpdt_enabled(): the ID is
+	 * historical order data, so an order placed while the flag was on keeps
+	 * exporting it after the flag is turned off.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param WC_Order $order Order object.
+	 *
+	 * @return string GPDT rate ID, or '' when absent.
+	 */
+	public static function get_gpdt_rate_id( WC_Order $order ): string {
+		$item = self::get_gpdt_shipping_item( $order );
+
+		return null !== $item ? (string) $item->get_meta( Checkout\Checkout_Rates_Options::GPDT_RATE_ID_META_KEY ) : '';
+	}
+
+	/**
+	 * Get the shipping item the order's GPDT fields are read from.
+	 *
+	 * That is the item the prepaid duties fee tag names, else the first item
+	 * with a non-empty GPDT rate ID. The REST export reads the GPDT rate ID and
+	 * the rate code from this one item, so the two always name the same quote.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param WC_Order $order Order object.
+	 *
+	 * @return \WC_Order_Item_Shipping|null The item, or null when no shipping item has a GPDT rate ID.
+	 */
+	public static function get_gpdt_shipping_item( WC_Order $order ): ?\WC_Order_Item_Shipping {
+		$item = self::get_tagged_gpdt_shipping_item( $order );
+
+		if ( null !== $item ) {
+			return $item;
+		}
+
 		foreach ( $order->get_shipping_methods() as $shipping_method ) {
 			if ( ! $shipping_method instanceof \WC_Order_Item_Shipping ) {
 				continue;
 			}
 
-			$rate_code = $shipping_method->get_meta( Checkout\Checkout_Rates_Options::RATE_CODE_META_KEY );
+			$value = $shipping_method->get_meta( Checkout\Checkout_Rates_Options::GPDT_RATE_ID_META_KEY );
 
-			if ( is_scalar( $rate_code ) && '' !== (string) $rate_code ) {
-				return (string) $rate_code;
+			if ( is_scalar( $value ) && '' !== (string) $value ) {
+				return $shipping_method;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Get the shipping item whose GPDT rate ID the prepaid duties fee tag names.
+	 *
+	 * The tag's reference is checked against the order's shipping items, so a
+	 * stale or edited tag that names no quote on the order is not trusted.
+	 *
+	 * @since 5.4.1
+	 *
+	 * @param WC_Order $order Order object.
+	 *
+	 * @return \WC_Order_Item_Shipping|null The item, or null when no tag reference matches one.
+	 */
+	public static function get_tagged_gpdt_shipping_item( WC_Order $order ): ?\WC_Order_Item_Shipping {
+		$reference = GPDT\Prepaid_Duties::get_reference( $order );
+
+		if ( '' === $reference ) {
+			return null;
+		}
+
+		foreach ( $order->get_shipping_methods() as $shipping_method ) {
+			if ( $shipping_method instanceof \WC_Order_Item_Shipping && $reference === $shipping_method->get_meta( Checkout\Checkout_Rates_Options::GPDT_RATE_ID_META_KEY ) ) {
+				return $shipping_method;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * The first non-empty scalar value of a meta key across the order's shipping items.
+	 *
+	 * @param WC_Order $order    Order object.
+	 * @param string   $meta_key Shipping item meta key.
+	 *
+	 * @return string The value, or '' when no shipping item carries one.
+	 */
+	private static function get_shipping_item_meta( WC_Order $order, string $meta_key ): string {
+		foreach ( $order->get_shipping_methods() as $shipping_method ) {
+			if ( ! $shipping_method instanceof \WC_Order_Item_Shipping ) {
+				continue;
+			}
+
+			$value = $shipping_method->get_meta( $meta_key );
+
+			if ( is_scalar( $value ) && '' !== (string) $value ) {
+				return (string) $value;
 			}
 		}
 

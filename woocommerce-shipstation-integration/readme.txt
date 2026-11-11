@@ -3,11 +3,11 @@ Contributors: woocommerce, automattic, royho, akeda, mattyza, bor0, woothemes, d
 Tags: shipping, woocommerce, woo, automattic
 Requires at least: 7.0
 Tested up to: 7.1
-WC tested up to: 11.2
-WC requires at least: 11.0
+WC tested up to: 11.3
+WC requires at least: 11.1
 Requires PHP: 7.4
 Requires Plugins: woocommerce
-Stable tag: 5.4.0
+Stable tag: 5.4.1
 License: GPLv3
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -73,6 +73,15 @@ This commonly occurs when products and variations do not have a unique [stock-ke
 6. Manage every order from one dashboard, with a single login.
 
 == Changelog ==
+
+= 5.4.1 - 2026-11-11 =
+* Tweak - WooCommerce 11.3 Compatibility.
+* Fix   - Skip checkout rate quotes in a currency other than the store currency, instead of charging them as store-currency amounts, and log the skipped quotes.
+* Fix   - Leave orders with nothing to ship out of the REST orders export, so they no longer get an order note saying they were exported to ShipStation.
+* Fix   - Save the recurring shipping on subscriptions bought with a ShipStation checkout rate, so renewals charge shipping.
+* Fix   - Security update.
+* Fix   - Stop "Reconnect to WordPress.com" on the repair card from disconnecting a WordPress.com connection that another plugin, such as Jetpack, also uses. Only an administrator can reset a shared connection.
+* Fix   - Show the gift option and message once on the thank-you page and in order emails for classic checkout orders on WooCommerce 11.3 and later, where they appeared twice, and show the gift option on stores in another language, where it was hidden.
 
 = 5.4.0 - 2026-10-14 =
 * Fix   - Request ShipStation rates as soon as the customer has entered a country and ZIP code, instead of waiting for a city, and stop logging errors while the address is still incomplete.
